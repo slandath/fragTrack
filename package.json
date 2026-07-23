@@ -8,7 +8,7 @@
 		"db:migrate": "drizzle-kit migrate",
 		"db:push": "drizzle-kit push",
 		"db:studio": "drizzle-kit studio",
-		"dev": "tsx watch src/server.ts",
+		"dev": "tsx watch server/server.ts",
 		"start": "node dist/server.js",
 		"build": "tsc -b tsconfig.build.json"
 	},

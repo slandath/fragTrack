@@ -2,7 +2,7 @@
     "extends": "./tsconfig.json",
     "compilerOptions": {
         "tsBuildInfoFile": "./node_modules/.tmp/tsconfig.build.tsbuildinfo",
-        "rootDir": "./src",
+        "rootDir": "./server",
         "outDir": "./dist",
         "skipLibCheck": true,
         "module": "nodenext",
@@ -12,6 +12,6 @@
         ]
     },
     "include": [
-        "src/**/*"
+        "server/**/*"
     ]
 }
