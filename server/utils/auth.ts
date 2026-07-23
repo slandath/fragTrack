@@ -36,6 +36,10 @@ export const auth = betterAuth({
   advanced: {
     cookiePrefix: "fragTrack",
     useSecureCookies: process.env.NODE_ENV === "production",
+    ipAddress: {
+      ipAddressHeaders: ["x-forwarded-for"],
+      trustedProxies: ["::1", "::ffff:127.0.0.1"]
+    },
     defaultCookieAttributes:
       process.env.NODE_ENV === "production"
         ? {
