@@ -1,13 +1,23 @@
 import Fastify from "fastify";
+import fastifyStatic from "@fastify/static"
 import { auth } from "./utils/auth.js";
 import { fromNodeHeaders } from "better-auth/node"
 import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
 import { appRouter } from "./trpc/router.js";
 import { createContext } from "./trpc/context.js";
+import path from "node:path"
+import { fileURLToPath } from "node:url"
 
 const fastify = Fastify({
   logger: true,
 });
+
+if (process.env.NODE_ENV === "production") {
+  const __dirname = path.dirname(fileURLToPath(import.meta.url))
+  const clientDist = path.resolve(__dirname, "../client/dist")
+  await fastify.register(fastifyStatic, { root: clientDist })
+  fastify.setNotFoundHandler((_req, reply) => reply.sendFile("index.html"))
+}
 
 await fastify.register(fastifyTRPCPlugin, {
   prefix: "/trpc",
