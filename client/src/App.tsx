@@ -1,7 +1,7 @@
-import { BrowserRouter, Routes, Route } from 'react-router-dom'
-import { TRPCProvider } from "./trpc"
-import Home from './pages/Home'
-import Login from './pages/Login'
+import { BrowserRouter, Routes, Route } from "react-router-dom";
+import { TRPCProvider } from "./trpc";
+import Home from "./pages/Home";
+import Login from "./pages/Login";
 
 function App() {
   return (
@@ -13,7 +13,7 @@ function App() {
         </Routes>
       </BrowserRouter>
     </TRPCProvider>
-  )
+  );
 }
 
-export default App
+export default App;

@@ -12,16 +12,11 @@
   },
   "customizations": {
     "vscode": {
-      "extensions": [
-        "bradlc.vscode-tailwindcss"
-      ]
+      "extensions": ["bradlc.vscode-tailwindcss"]
     }
   },
   // Use 'forwardPorts' to make a list of ports inside the container available locally.
-  "forwardPorts": [
-    3000,
-    5173
-  ],
+  "forwardPorts": [3000, 5173],
   // Use 'postCreateCommand' to run commands after the container is created.
   "postCreateCommand": "npm install -g pnpm && pnpm install"
   // Configure tool-specific properties.
