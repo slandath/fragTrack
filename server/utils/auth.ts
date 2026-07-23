@@ -38,7 +38,7 @@ export const auth = betterAuth({
     useSecureCookies: process.env.NODE_ENV === "production",
     ipAddress: {
       ipAddressHeaders: ["x-forwarded-for"],
-      trustedProxies: ["::1", "::ffff:127.0.0.1"]
+      trustedProxies: ["::1", "::ffff:127.0.0.1"],
     },
     defaultCookieAttributes:
       process.env.NODE_ENV === "production"
