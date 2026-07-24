@@ -26,7 +26,7 @@ async function trpcMutate(path: string, input: Record<string, unknown>) {
       Authorization: `Bearer ${API_KEY}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({ "0": input }),
+    body: JSON.stringify(input),
   });
   const json = await res.json();
   return (Array.isArray(json) ? json[0] : json).result.data;

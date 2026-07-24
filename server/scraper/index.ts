@@ -3,9 +3,9 @@ import { domainConfigs } from "./configs.js";
 
 export async function scrapePrice(url: string) {
   try {
-    const browser = await chromium.launch();
+    const browser = await chromium.launch({ args: ["--no-sandbox"] });
     const page = await browser.newPage();
-    await page.goto(url, { waitUntil: "domcontentloaded" });
+    await page.goto(url, { waitUntil: "load" });
 
     const hostname = new URL(url).hostname;
     const config = domainConfigs[hostname];
@@ -27,7 +27,8 @@ export async function scrapePrice(url: string) {
 
     await browser.close();
     return { amount, currency };
-  } catch {
+  } catch (error) {
+    console.error("Scrape failed:", error);
     return { amount: null, currency: null };
   }
 }
