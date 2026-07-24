@@ -12,22 +12,21 @@ export const domainConfigs: Record<string, DomainConfig> = {
       currency: "USD",
     },
   },
-  "www.beautyhouse.com": {
+  "beautyhouse.com": {
     selectors: {
-      price: ".h4 text-on-sale > span:first-child",
+      price: ".h4.text-on-sale",
       currency: "USD",
     },
   },
-  "www.fragflex.com": {
+  "fragflex.com": {
     selectors: {
-      price:
-        "price-item price-custom-item price-item--sale price-item--last  price-custom-product-page   sale-price",
+      price: ".price-custom__sale .money",
       currency: "",
     },
   },
-  "www.perfumebox.com": {
+  "perfumebox.com": {
     selectors: {
-      price: "product__price on-sale",
+      price: "[data-product-price] [aria-hidden='true']",
       currency: "USD",
     },
   },

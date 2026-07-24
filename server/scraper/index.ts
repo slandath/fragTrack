@@ -13,6 +13,10 @@ export async function scrapePrice(url: string) {
     let currency: string | null = null;
 
     if (config) {
+      console.log("Page title:", await page.title());
+      console.log("Page URL:", page.url());
+      const exists = await page.$(".price-value");
+      console.log("Element exists:", !!exists);
       await page.waitForSelector(config.selectors.price, { timeout: 10000 }).catch(() => {});
 
       const el = await page.$(config.selectors.price);
