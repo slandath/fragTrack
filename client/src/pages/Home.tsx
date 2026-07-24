@@ -137,7 +137,8 @@ export default function Home() {
 
                 {latestPrices[url.id] ? (
                   <Badge variant="secondary">
-                    {latestPrices[url.id].currency} {latestPrices[url.id].amount}
+                    {latestPrices[url.id].currency === "USD" ? "$" : latestPrices[url.id].currency}{" "}
+                    {latestPrices[url.id].amount}
                   </Badge>
                 ) : (
                   <span className="text-xs text-muted-foreground">—</span>

@@ -21,7 +21,7 @@ export const domainConfigs: Record<string, DomainConfig> = {
   "fragflex.com": {
     selectors: {
       price: ".price-custom__sale .money",
-      currency: "",
+      currency: "USD",
     },
   },
   "perfumebox.com": {
@@ -33,6 +33,18 @@ export const domainConfigs: Record<string, DomainConfig> = {
   "www.fragrancex.com": {
     selectors: {
       price: ".price-value",
+      currency: "USD",
+    },
+  },
+  "aurafragrance.com": {
+    selectors: {
+      price: "#productPrice-product-template .visually-hidden",
+      currency: "USD",
+    },
+  },
+  "fragrancenet.com": {
+    selectors: {
+      price: ".text-dark-purple",
       currency: "USD",
     },
   },
