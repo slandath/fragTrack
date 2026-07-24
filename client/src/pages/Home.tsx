@@ -14,17 +14,22 @@ export default function Home() {
   const navigate = useNavigate();
 
   const { data: rows, isPending: loadingFrags, refetch } = trpc.getFragrances.useQuery();
+  const { data: priceRows } = trpc.getLatestPrices.useQuery();
   const addFragrance = trpc.addFragrance.useMutation({ onSuccess: () => refetch() });
   const addRetailerUrl = trpc.addRetailerUrl.useMutation({ onSuccess: () => refetch() });
-  const lookupPrice = trpc.lookupPrice.useMutation();
 
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
   const [expandedFragId, setExpandedFragId] = useState<string | null>(null);
   const [newUrl, setNewUrl] = useState("");
-  const [prices, setPrices] = useState<
-    Record<string, { amount: string | null; currency: string | null } | "loading">
-  >({});
+
+  const latestPrices = useMemo(() => {
+    const map: Record<string, { amount: string; currency: string }> = {};
+    for (const p of priceRows ?? []) {
+      if (!map[p.retailerUrlId]) map[p.retailerUrlId] = p;
+    }
+    return map;
+  }, [priceRows]);
 
   const fragrances = useMemo(() => {
     if (!rows) return {};
@@ -57,12 +62,6 @@ export default function Home() {
     setExpandedFragId(null);
   }
 
-  async function handleCheckPrice(retailerUrlId: string) {
-    setPrices((p) => ({ ...p, [retailerUrlId]: "loading" }));
-    const result = await lookupPrice.mutateAsync({ retailerUrlId });
-    setPrices((p) => ({ ...p, [retailerUrlId]: result }));
-  }
-
   if (isPending) return <div>Loading...</div>;
   if (!session) {
     navigate("/login");
@@ -75,7 +74,12 @@ export default function Home() {
     <div className="mx-auto max-w-2xl space-y-6 p-4">
       <div className="flex items-center justify-between">
         <h1 className="font-heading text-xl font-semibold">fragTrack</h1>
-        <span className="text-sm text-muted-foreground">{session.user?.name}</span>
+        <div className="flex items-center gap-4">
+          <a href="/settings" className="text-sm text-muted-foreground hover:underline">
+            Settings
+          </a>
+          <span className="text-sm text-muted-foreground">{session.user?.name}</span>
+        </div>
       </div>
 
       <Card size="sm">
@@ -122,35 +126,24 @@ export default function Home() {
               <p className="text-sm text-muted-foreground">No URLs tracked yet.</p>
             )}
 
-            {frag.urls.map((url) => {
-              const price = prices[url.id];
-              return (
-                <div
-                  key={url.id}
-                  className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
-                >
-                  <span className="flex-1 truncate">
-                    {new URL(url.url).hostname.replace(/^www\./, "")}
-                  </span>
+            {frag.urls.map((url) => (
+              <div
+                key={url.id}
+                className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
+              >
+                <span className="flex-1 font-medium">
+                  {new URL(url.url).hostname.replace(/^www\./, "")}
+                </span>
 
-                  {price === "loading" && <Badge variant="outline">Checking...</Badge>}
-
-                  {price && price !== "loading" && price.amount && (
-                    <Badge variant="secondary">
-                      {price.currency} {price.amount}
-                    </Badge>
-                  )}
-
-                  {price && price !== "loading" && !price.amount && (
-                    <Badge variant="ghost">Not found</Badge>
-                  )}
-
-                  <Button size="xs" variant="outline" onClick={() => handleCheckPrice(url.id)}>
-                    Check
-                  </Button>
-                </div>
-              );
-            })}
+                {latestPrices[url.id] ? (
+                  <Badge variant="secondary">
+                    {latestPrices[url.id].currency} {latestPrices[url.id].amount}
+                  </Badge>
+                ) : (
+                  <span className="text-xs text-muted-foreground">—</span>
+                )}
+              </div>
+            ))}
 
             {expandedFragId === frag.id && (
               <div className="flex gap-2 pt-1">

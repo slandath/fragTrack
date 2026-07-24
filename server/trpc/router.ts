@@ -1,11 +1,10 @@
 import { initTRPC } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import crypto from "node:crypto";
 import type { Context } from "./context.js";
-import { fragrance, retailer, retailerUrl } from "../db/schema.js";
-import { scrapePrice } from "../scraper/index.js";
+import { user, fragrance, retailer, retailerUrl, price } from "../db/schema.js";
 import { db } from "../index.js";
 
 const t = initTRPC.context<Context>().create();
@@ -43,12 +42,45 @@ export const appRouter = t.router({
     timestamp: Date.now(),
   })),
 
+  getUserApiKey: protectedProcedure.query(async ({ ctx }) => {
+    const users = await db.select().from(user).where(eq(user.id, ctx.user.id)).limit(1);
+    if (!users[0]) throw new TRPCError({ code: "NOT_FOUND" });
+    if (!users[0].apiKey) {
+      const key = crypto.randomUUID();
+      await db.update(user).set({ apiKey: key }).where(eq(user.id, ctx.user.id));
+      return { apiKey: key };
+    }
+    return { apiKey: users[0].apiKey };
+  }),
+
   getFragrances: protectedProcedure.query(async ({ ctx }) => {
     return await db
       .select()
       .from(fragrance)
       .where(eq(fragrance.userId, ctx.user.id))
       .leftJoin(retailerUrl, eq(fragrance.id, retailerUrl.fragranceId));
+  }),
+
+  getUserUrls: protectedProcedure.query(async ({ ctx }) => {
+    return await db
+      .select()
+      .from(retailerUrl)
+      .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+      .where(eq(fragrance.userId, ctx.user.id));
+  }),
+  getLatestPrices: protectedProcedure.query(async ({ ctx }) => {
+    return await db
+      .select({
+        retailerUrlId: price.retailerUrlId,
+        amount: price.amount,
+        currency: price.currency,
+        scrapedAt: price.scrapedAt,
+      })
+      .from(price)
+      .innerJoin(retailerUrl, eq(price.retailerUrlId, retailerUrl.id))
+      .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+      .where(eq(fragrance.userId, ctx.user.id))
+      .orderBy(desc(price.scrapedAt));
   }),
 
   addFragrance: protectedProcedure
@@ -74,22 +106,20 @@ export const appRouter = t.router({
 
       return { id, fragranceId: input.fragranceId, retailerId: r.id, url: input.url };
     }),
-
-  lookupPrice: protectedProcedure
-    .input(z.object({ retailerUrlId: z.string() }))
+  storePrice: protectedProcedure
+    .input(z.object({ retailerUrlId: z.string(), amount: z.string(), currency: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      const urls = await db
+      const url = await db
         .select()
         .from(retailerUrl)
-        .where(eq(retailerUrl.id, input.retailerUrlId))
+        .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+        .where(and(eq(retailerUrl.id, input.retailerUrlId), eq(fragrance.userId, ctx.user.id)))
         .limit(1);
+      if (!url[0]) throw new TRPCError({ code: "NOT_FOUND" });
 
-      if (!urls[0]) throw new TRPCError({ code: "NOT_FOUND", message: "URL not found" });
-
-      // Verify user owns the fragrance this URL is linked to
-      await findFragrance(urls[0].fragranceId, ctx.user.id);
-
-      return await scrapePrice(urls[0].url);
+      const id = crypto.randomUUID();
+      await db.insert(price).values({ id, ...input });
+      return { id, ...input };
     }),
 });
 

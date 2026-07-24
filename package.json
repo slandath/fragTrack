@@ -10,7 +10,8 @@
     "db:studio": "drizzle-kit studio",
     "dev": "tsx watch server/server.ts",
     "start": "node dist/server.js",
-    "build": "pnpm --filter client build && tsc -b tsconfig.build.json"
+    "build": "pnpm --filter client build && tsc -b tsconfig.build.json",
+    "scrape": "tsx scripts/scrape.ts"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
