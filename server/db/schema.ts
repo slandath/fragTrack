@@ -16,6 +16,7 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false).notNull(),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
+  apiKey: text("api_key"),
 });
 
 export const session = pgTable(
@@ -124,6 +125,16 @@ export const retailerUrl = pgTable("retailer_url", {
     .notNull(),
 });
 
+export const price = pgTable("price", {
+  id: text("id").primaryKey(),
+  retailerUrlId: text("retailer_url_id")
+    .notNull()
+    .references(() => retailerUrl.id, { onDelete: "cascade" }),
+  amount: text("amount").notNull(),
+  currency: text("currency").notNull().default("USD"),
+  scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
+});
+
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
@@ -141,4 +152,23 @@ export const accountRelations = relations(account, ({ one }) => ({
     fields: [account.userId],
     references: [user.id],
   }),
+}));
+
+export const priceRelations = relations(price, ({ one }) => ({
+  retailerUrl: one(retailerUrl, {
+    fields: [price.retailerUrlId],
+    references: [retailerUrl.id],
+  }),
+}));
+
+export const retailerUrlRelations = relations(retailerUrl, ({ one, many }) => ({
+  fragrance: one(fragrance, {
+    fields: [retailerUrl.fragranceId],
+    references: [fragrance.id],
+  }),
+  retailer: one(retailer, {
+    fields: [retailerUrl.retailerId],
+    references: [retailer.id],
+  }),
+  prices: many(price),
 }));
