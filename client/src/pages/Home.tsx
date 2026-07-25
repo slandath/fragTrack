@@ -17,6 +17,8 @@ export default function Home() {
   const { data: priceRows } = trpc.getLatestPrices.useQuery();
   const addFragrance = trpc.addFragrance.useMutation({ onSuccess: () => refetch() });
   const addRetailerUrl = trpc.addRetailerUrl.useMutation({ onSuccess: () => refetch() });
+  const deleteUrl = trpc.deleteRetailerUrl.useMutation({ onSuccess: () => refetch() });
+  const deleteFrag = trpc.deleteFragrance.useMutation({ onSuccess: () => refetch() });
 
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
@@ -118,6 +120,16 @@ export default function Home() {
               <Button size="sm" variant="outline" onClick={() => setExpandedFragId(frag.id)}>
                 + Add URL
               </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => {
+                  if (window.confirm("Delete this fragrance and all its URLs?"))
+                    deleteFrag.mutateAsync({ id: frag.id });
+                }}
+              >
+                Delete
+              </Button>
             </CardAction>
           </CardHeader>
 
@@ -131,6 +143,15 @@ export default function Home() {
                 key={url.id}
                 className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
               >
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => {
+                    if (window.confirm("Delete this URL?")) deleteUrl.mutateAsync({ id: url.id });
+                  }}
+                >
+                  X
+                </Button>
                 <span className="flex-1 font-medium">
                   {new URL(url.url).hostname.replace(/^www\./, "")}
                 </span>

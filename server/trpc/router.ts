@@ -20,10 +20,20 @@ async function findOrCreateRetailer(url: string) {
   const hostname = new URL(url).hostname.replace(/^www\./, "");
   const existing = await db.select().from(retailer).where(eq(retailer.name, hostname)).limit(1);
   if (existing[0]) return existing[0];
-
   const id = crypto.randomUUID();
   await db.insert(retailer).values({ id, name: hostname, url: hostname });
   return { id, name: hostname, url: hostname };
+}
+
+async function cleanupOrphanedRetailer(retailerId: string) {
+  const remaining = await db
+    .select({ id: retailerUrl.id })
+    .from(retailerUrl)
+    .where(eq(retailerUrl.retailerId, retailerId))
+    .limit(1);
+  if (!remaining[0]) {
+    await db.delete(retailer).where(eq(retailer.id, retailerId));
+  }
 }
 
 async function findFragrance(id: string, userId: string) {
@@ -120,6 +130,39 @@ export const appRouter = t.router({
       const id = crypto.randomUUID();
       await db.insert(price).values({ id, ...input });
       return { id, ...input };
+    }),
+  deleteRetailerUrl: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const urlRows = await db
+        .select({ retailerId: retailerUrl.retailerId })
+        .from(retailerUrl)
+        .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+        .where(and(eq(retailerUrl.id, input.id), eq(fragrance.userId, ctx.user.id)))
+        .limit(1);
+      if (!urlRows[0]) throw new TRPCError({ code: "NOT_FOUND" });
+
+      const { retailerId } = urlRows[0];
+      await db.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
+      await cleanupOrphanedRetailer(retailerId);
+    }),
+  deleteFragrance: protectedProcedure
+    .input(z.object({ id: z.string() }))
+    .mutation(async ({ ctx, input }) => {
+      const f = await findFragrance(input.id, ctx.user.id);
+
+      const urls = await db
+        .select({ retailerId: retailerUrl.retailerId })
+        .from(retailerUrl)
+        .where(eq(retailerUrl.fragranceId, f.id));
+
+      const retailerIds = urls.map((u) => u.retailerId);
+
+      await db.delete(fragrance).where(eq(fragrance.id, input.id));
+
+      for (const id of retailerIds) {
+        await cleanupOrphanedRetailer(id);
+      }
     }),
 });
 
