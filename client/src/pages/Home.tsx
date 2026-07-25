@@ -8,12 +8,14 @@ import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/componen
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
+import { Plus, Globe, Trash2 } from "lucide-react";
 
 export default function Home() {
   const { data: session, isPending } = authClient.useSession();
   const navigate = useNavigate();
 
   const { data: rows, isPending: loadingFrags, refetch } = trpc.getFragrances.useQuery();
+  const { data: supportedDomains } = trpc.getSupportedDomains.useQuery();
   const { data: priceRows } = trpc.getLatestPrices.useQuery();
   const addFragrance = trpc.addFragrance.useMutation({ onSuccess: () => refetch() });
   const addRetailerUrl = trpc.addRetailerUrl.useMutation({ onSuccess: () => refetch() });
@@ -86,12 +88,24 @@ export default function Home() {
 
       <Card size="sm">
         <CardHeader>
-          <CardTitle>Add Fragrance</CardTitle>
+          <CardTitle>Track Fragrance</CardTitle>
         </CardHeader>
-        <CardContent className="flex gap-2">
-          <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand" />
-          <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
-          <Button onClick={handleAddFragrance}>Add</Button>
+        <CardContent>
+          <div className="flex gap-2">
+            <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand" />
+            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
+            <Button onClick={handleAddFragrance}>Track</Button>
+          </div>
+          {supportedDomains && (
+            <div className="flex flex-wrap items-center gap-1 pt-6">
+              <span className="text-xs text-muted-foreground">Retailers:</span>
+              {supportedDomains.sort().map((d) => (
+                <Badge key={d} variant="outline" className="text-xs">
+                  {d.replace(/^www\./, "")}
+                </Badge>
+              ))}
+            </div>
+          )}
         </CardContent>
       </Card>
 
@@ -117,18 +131,19 @@ export default function Home() {
               {frag.brand} — {frag.name}
             </CardTitle>
             <CardAction>
-              <Button size="sm" variant="outline" onClick={() => setExpandedFragId(frag.id)}>
-                + Add URL
+              <Button size="sm" onClick={() => setExpandedFragId(frag.id)}>
+                <Plus className="h-4 w-4" />
+                <Globe className="h-4 w-4" />
               </Button>
               <Button
                 size="sm"
-                variant="outline"
+                className="ml-2"
                 onClick={() => {
                   if (window.confirm("Delete this fragrance and all its URLs?"))
                     deleteFrag.mutateAsync({ id: frag.id });
                 }}
               >
-                Delete
+                <Trash2 className="h-4 w-4" />
               </Button>
             </CardAction>
           </CardHeader>
@@ -137,35 +152,53 @@ export default function Home() {
             {frag.urls.length === 0 && (
               <p className="text-sm text-muted-foreground">No URLs tracked yet.</p>
             )}
-
-            {frag.urls.map((url) => (
-              <div
-                key={url.id}
-                className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
-              >
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => {
-                    if (window.confirm("Delete this URL?")) deleteUrl.mutateAsync({ id: url.id });
-                  }}
+            {[...frag.urls]
+              .sort((a, b) => {
+                const aPrice = latestPrices[a.id]
+                  ? parseFloat(latestPrices[a.id].amount)
+                  : Infinity;
+                const bPrice = latestPrices[b.id]
+                  ? parseFloat(latestPrices[b.id].amount)
+                  : Infinity;
+                return aPrice - bPrice;
+              })
+              .map((url) => (
+                <div
+                  key={url.id}
+                  className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
                 >
-                  X
-                </Button>
-                <span className="flex-1 font-medium">
-                  {new URL(url.url).hostname.replace(/^www\./, "")}
-                </span>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      if (window.confirm("Delete this URL?")) deleteUrl.mutateAsync({ id: url.id });
+                    }}
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                  <span className="flex-1 font-medium">
+                    <a
+                      href={url.url}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="flex-1 font-medium hover:underline"
+                    >
+                      {new URL(url.url).hostname.replace(/^www\./, "")}
+                    </a>
+                  </span>
 
-                {latestPrices[url.id] ? (
-                  <Badge variant="secondary">
-                    {latestPrices[url.id].currency === "USD" ? "$" : latestPrices[url.id].currency}{" "}
-                    {latestPrices[url.id].amount}
-                  </Badge>
-                ) : (
-                  <span className="text-xs text-muted-foreground">—</span>
-                )}
-              </div>
-            ))}
+                  {latestPrices[url.id] ? (
+                    <Badge variant="secondary">
+                      {latestPrices[url.id].currency === "USD"
+                        ? "$"
+                        : latestPrices[url.id].currency}{" "}
+                      {latestPrices[url.id].amount}
+                    </Badge>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </div>
+              ))}
 
             {expandedFragId === frag.id && (
               <div className="flex gap-2 pt-1">

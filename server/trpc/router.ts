@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import type { Context } from "./context.js";
 import { user, fragrance, retailer, retailerUrl, price } from "../db/schema.js";
 import { db } from "../index.js";
+import { domainConfigs } from "../scraper/configs.js";
 
 const t = initTRPC.context<Context>().create();
 
@@ -92,7 +93,9 @@ export const appRouter = t.router({
       .where(eq(fragrance.userId, ctx.user.id))
       .orderBy(desc(price.scrapedAt));
   }),
-
+  getSupportedDomains: protectedProcedure.query(async () => {
+    return Object.keys(domainConfigs);
+  }),
   addFragrance: protectedProcedure
     .input(z.object({ name: z.string().min(1), brand: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
@@ -107,6 +110,13 @@ export const appRouter = t.router({
     .input(z.object({ fragranceId: z.string(), url: z.string().url() }))
     .mutation(async ({ ctx, input }) => {
       await findFragrance(input.fragranceId, ctx.user.id);
+      const hostname = new URL(input.url).hostname.replace(/^www\./, "");
+      if (!domainConfigs[hostname]) {
+        throw new TRPCError({
+          code: "BAD_REQUEST",
+          message: `"${hostname}" is not a supported domain`,
+        });
+      }
       const r = await findOrCreateRetailer(input.url);
 
       const id = crypto.randomUUID();
