@@ -5,8 +5,9 @@ export interface DomainConfig {
   };
 }
 
+// Remove "www" from domain
 export const domainConfigs: Record<string, DomainConfig> = {
-  "www.jomashop.com": {
+  "jomashop.com": {
     selectors: {
       price: ".now-price > span:first-child",
       currency: "USD",
@@ -30,7 +31,7 @@ export const domainConfigs: Record<string, DomainConfig> = {
       currency: "USD",
     },
   },
-  "www.fragrancex.com": {
+  "fragrancex.com": {
     selectors: {
       price: ".price-value",
       currency: "USD",

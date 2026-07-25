@@ -17,7 +17,7 @@ export async function scrapePrice(url: string) {
 
     await page.goto(url, { waitUntil: "load" });
 
-    const hostname = new URL(url).hostname;
+    const hostname = new URL(url).hostname.replace(/^www\./, "");
     const config = domainConfigs[hostname];
     let amount: string | null = null;
     let currency: string | null = null;
@@ -34,7 +34,6 @@ export async function scrapePrice(url: string) {
         }
       }
     }
-
     await browser.close();
     return { amount, currency };
   } catch (error) {

@@ -73,7 +73,7 @@ export default function Home() {
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
       <div className="flex items-center justify-between">
-        <h1 className="font-heading text-xl font-semibold">fragTrack</h1>
+        <h1 className="font-heading text-xl font-semibold">Frag Tracker</h1>
         <div className="flex items-center gap-4">
           <a href="/settings" className="text-sm text-muted-foreground hover:underline">
             Settings
