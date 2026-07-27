@@ -7,9 +7,15 @@ export interface DomainConfig {
 
 // Remove "www" from domain
 export const domainConfigs: Record<string, DomainConfig> = {
-  "jomashop.com": {
+  "amazon.com": {
     selectors: {
-      price: ".now-price > span:first-child",
+      price: ".a-price .a-offscreen",
+      currency: "USD",
+    },
+  },
+  "aurafragrance.com": {
+    selectors: {
+      price: "#productPrice-product-template .visually-hidden",
       currency: "USD",
     },
   },
@@ -25,9 +31,9 @@ export const domainConfigs: Record<string, DomainConfig> = {
       currency: "USD",
     },
   },
-  "perfumebox.com": {
+  "fragrancenet.com": {
     selectors: {
-      price: "[data-product-price] [aria-hidden='true']",
+      price: ".text-dark-purple",
       currency: "USD",
     },
   },
@@ -37,15 +43,15 @@ export const domainConfigs: Record<string, DomainConfig> = {
       currency: "USD",
     },
   },
-  "aurafragrance.com": {
+  "jomashop.com": {
     selectors: {
-      price: "#productPrice-product-template .visually-hidden",
+      price: ".now-price > span:first-child",
       currency: "USD",
     },
   },
-  "fragrancenet.com": {
+  "perfumebox.com": {
     selectors: {
-      price: ".text-dark-purple",
+      price: "[data-product-price] [aria-hidden='true']",
       currency: "USD",
     },
   },
