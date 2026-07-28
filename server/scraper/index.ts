@@ -1,5 +1,10 @@
-import { chromium } from "playwright";
+import { chromium as playwrightChromium } from "playwright";
+import { addExtra } from "playwright-extra";
+import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { domainConfigs } from "./configs.js";
+
+const chromium = addExtra(playwrightChromium);
+chromium.use(StealthPlugin());
 
 export async function scrapePrice(url: string) {
   try {
@@ -16,7 +21,6 @@ export async function scrapePrice(url: string) {
     });
 
     await page.goto(url, { waitUntil: "load" });
-
     const hostname = new URL(url).hostname.replace(/^www\./, "");
     const config = domainConfigs[hostname];
     let amount: string | null = null;
@@ -24,7 +28,6 @@ export async function scrapePrice(url: string) {
 
     if (config) {
       await page.waitForSelector(config.selectors.price, { timeout: 10000 }).catch(() => {});
-
       const el = await page.$(config.selectors.price);
       if (el) {
         const raw = (await el.textContent())?.trim().replace(/[^0-9.]/g, "") ?? null;

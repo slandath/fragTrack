@@ -7,12 +7,6 @@ export interface DomainConfig {
 
 // Remove "www" from domain
 export const domainConfigs: Record<string, DomainConfig> = {
-  "amazon.com": {
-    selectors: {
-      price: ".a-price .a-offscreen",
-      currency: "USD",
-    },
-  },
   "aurafragrance.com": {
     selectors: {
       price: "#productPrice-product-template .visually-hidden",
@@ -24,6 +18,9 @@ export const domainConfigs: Record<string, DomainConfig> = {
       price: ".h4.text-on-sale",
       currency: "USD",
     },
+  },
+  "camelcamelcamel.com": {
+    selectors: { price: ".bgp", currency: "USD" },
   },
   "fragflex.com": {
     selectors: {

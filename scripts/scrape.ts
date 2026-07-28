@@ -33,6 +33,8 @@ async function trpcMutate(path: string, input: Record<string, unknown>) {
 }
 
 async function main() {
+  await trpcMutate("deleteAllPrices", {});
+  console.log("Cleared existing prices.\n");
   const urls: {
     retailer_url: { id: string; url: string };
     fragrance: { brand: string; name: string };

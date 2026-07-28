@@ -1,7 +1,7 @@
 import { initTRPC } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, and, desc } from "drizzle-orm";
+import { eq, and, desc, inArray } from "drizzle-orm";
 import crypto from "node:crypto";
 import type { Context } from "./context.js";
 import { user, fragrance, retailer, retailerUrl, price } from "../db/schema.js";
@@ -174,6 +174,20 @@ export const appRouter = t.router({
         await cleanupOrphanedRetailer(id);
       }
     }),
+
+  deleteAllPrices: protectedProcedure.input(z.object({})).mutation(async ({ ctx }) => {
+    const userUrls = await db
+      .select({ id: retailerUrl.id })
+      .from(retailerUrl)
+      .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+      .where(eq(fragrance.userId, ctx.user.id));
+
+    const urlIds = userUrls.map((u) => u.id);
+    if (urlIds.length === 0) return { deleted: 0 };
+
+    await db.delete(price).where(inArray(price.retailerUrlId, urlIds));
+    return { deleted: urlIds.length };
+  }),
 });
 
 export type AppRouter = typeof appRouter;
