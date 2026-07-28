@@ -20,10 +20,22 @@ export default function Home() {
   const { data: priceRows } = trpc.getLatestPrices.useQuery();
 
   // Mutations that refetch fragrance data on success to keep UI in sync
-  const addFragrance = trpc.addFragrance.useMutation({ onSuccess: () => refetch() });
-  const addRetailerUrl = trpc.addRetailerUrl.useMutation({ onSuccess: () => refetch() });
-  const deleteUrl = trpc.deleteRetailerUrl.useMutation({ onSuccess: () => refetch() });
-  const deleteFrag = trpc.deleteFragrance.useMutation({ onSuccess: () => refetch() });
+  const addFragrance = trpc.addFragrance.useMutation({
+    onSuccess: () => refetch(),
+    onError: (err) => console.error("addFragrance failed:", err),
+  });
+  const addRetailerUrl = trpc.addRetailerUrl.useMutation({
+    onSuccess: () => refetch(),
+    onError: (err) => console.error("addRetailerUrl failed:", err),
+  });
+  const deleteUrl = trpc.deleteRetailerUrl.useMutation({
+    onSuccess: () => refetch(),
+    onError: (err) => console.error("deleteRetailerUrl failed:", err),
+  });
+  const deleteFrag = trpc.deleteFragrance.useMutation({
+    onSuccess: () => refetch(),
+    onError: (err) => console.error("deleteFragrance failed:", err),
+  });
 
   // Tracks which fragrance card's add-URL form is open (null = none)
   const [expandedFragId, setExpandedFragId] = useState<string | null>(null);
@@ -93,6 +105,7 @@ export default function Home() {
       <AddFragranceForm
         supportedDomains={supportedDomains ?? []}
         onAdd={handleAddFragrance}
+        isPending={addFragrance.isPending}
       />
 
       <Separator />
@@ -121,6 +134,9 @@ export default function Home() {
           onDeleteFragrance={handleDeleteFragrance}
           onDeleteUrl={handleDeleteUrl}
           onAddUrl={handleAddUrl}
+          addUrlPending={addRetailerUrl.isPending}
+          deleteFragrancePending={deleteFrag.isPending}
+          deleteUrlPending={deleteUrl.isPending}
         />
       ))}
     </div>

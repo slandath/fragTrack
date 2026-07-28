@@ -15,14 +15,21 @@ export default function FragranceCard({
   onDeleteFragrance,
   onDeleteUrl,
   onAddUrl,
+  addUrlPending,
+  deleteFragrancePending,
+  deleteUrlPending,
 }: FragranceCardProps) {
   const [newUrl, setNewUrl] = useState("");
 
   const isExpanded = expandedFragranceId === fragrance.id;
 
   async function handleAddUrl() {
-    await onAddUrl(fragrance.id, newUrl);
-    setNewUrl("");
+    try {
+      await onAddUrl(fragrance.id, newUrl);
+      setNewUrl("");
+    } catch {
+      // Error is already logged by the onError callback on the mutation
+    }
   }
 
   const sortedUrls = [...urls].sort((a, b) => {
@@ -40,13 +47,15 @@ export default function FragranceCard({
           {fragrance.brand} &mdash; {fragrance.name}
         </CardTitle>
         <CardAction>
-          <Button size="sm" onClick={() => onExpand(fragrance.id)}>
+          <Button size="sm" aria-label="Add retailer URL" onClick={() => onExpand(fragrance.id)}>
             <Plus className="h-4 w-4" />
             <Globe className="h-4 w-4" />
           </Button>
           <Button
             size="sm"
             className="ml-2"
+            aria-label="Delete fragrance"
+            disabled={deleteFragrancePending}
             onClick={() => {
               if (window.confirm("Delete this fragrance and all its URLs?"))
                 onDeleteFragrance(fragrance.id);
@@ -66,6 +75,7 @@ export default function FragranceCard({
             url={url}
             price={latestPrices[url.id]}
             onDelete={onDeleteUrl}
+            deletePending={deleteUrlPending}
           />
         ))}
         {isExpanded && (
@@ -75,7 +85,7 @@ export default function FragranceCard({
               onChange={(e) => setNewUrl(e.target.value)}
               placeholder="Product URL"
             />
-            <Button size="sm" onClick={handleAddUrl}>
+            <Button size="sm" onClick={handleAddUrl} disabled={addUrlPending}>
               Save
             </Button>
             <Button size="sm" variant="ghost" onClick={() => onExpand(null)}>

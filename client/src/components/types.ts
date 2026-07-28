@@ -21,6 +21,7 @@ export interface HeaderProps {
 export interface AddFragranceFormProps {
   supportedDomains: string[];
   onAdd: (brand: string, name: string) => Promise<void>;
+  isPending: boolean;
 }
 
 export interface FragranceCardProps {
@@ -32,10 +33,14 @@ export interface FragranceCardProps {
   onDeleteFragrance: (id: string) => Promise<void>;
   onDeleteUrl: (id: string) => Promise<void>;
   onAddUrl: (fragranceId: string, url: string) => Promise<void>;
+  addUrlPending: boolean;
+  deleteFragrancePending: boolean;
+  deleteUrlPending: boolean;
 }
 
 export interface UrlRowProps {
   url: RetailerUrl;
   price: PriceInfo | undefined;
   onDelete: (id: string) => Promise<void>;
+  deletePending: boolean;
 }
