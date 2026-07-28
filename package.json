@@ -14,7 +14,7 @@
     "scrape": "tsx scripts/scrape.ts",
     "lint": "oxlint",
     "typecheck": "tsc -b tsconfig.build.json --noEmit",
-    "check": "pnpm lint && pnpm typecheck && pnpm --filter client lint"
+    "check": "pnpm lint && pnpm typecheck && pnpm --filter client typecheck && pnpm --filter client lint"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
