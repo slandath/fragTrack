@@ -2,39 +2,42 @@ import { authClient } from "../auth";
 import { trpc } from "@/trpc";
 import { useNavigate } from "react-router-dom";
 import { useState, useMemo } from "react";
-import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
-import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
-import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
-import { Plus, Globe, Trash2 } from "lucide-react";
+import Header from "@/components/Header";
+import AddFragranceForm from "@/components/AddFragranceForm";
+import FragranceCard from "@/components/FragranceCard";
+import type { RetailerUrl, PriceInfo } from "@/components/types";
 
 export default function Home() {
+  // Session check — redirects to /login if not authenticated
   const { data: session, isPending } = authClient.useSession();
   const navigate = useNavigate();
 
+  // Fetch all fragrance rows, supported retailer domains, and latest prices
   const { data: rows, isPending: loadingFrags, refetch } = trpc.getFragrances.useQuery();
   const { data: supportedDomains } = trpc.getSupportedDomains.useQuery();
   const { data: priceRows } = trpc.getLatestPrices.useQuery();
+
+  // Mutations that refetch fragrance data on success to keep UI in sync
   const addFragrance = trpc.addFragrance.useMutation({ onSuccess: () => refetch() });
   const addRetailerUrl = trpc.addRetailerUrl.useMutation({ onSuccess: () => refetch() });
   const deleteUrl = trpc.deleteRetailerUrl.useMutation({ onSuccess: () => refetch() });
   const deleteFrag = trpc.deleteFragrance.useMutation({ onSuccess: () => refetch() });
 
-  const [name, setName] = useState("");
-  const [brand, setBrand] = useState("");
+  // Tracks which fragrance card's add-URL form is open (null = none)
   const [expandedFragId, setExpandedFragId] = useState<string | null>(null);
-  const [newUrl, setNewUrl] = useState("");
 
+  // Groups price rows by retailerUrlId, keeping only the first (latest) entry per URL
   const latestPrices = useMemo(() => {
-    const map: Record<string, { amount: string; currency: string }> = {};
+    const map: Record<string, PriceInfo> = {};
     for (const p of priceRows ?? []) {
       if (!map[p.retailerUrlId]) map[p.retailerUrlId] = p;
     }
     return map;
   }, [priceRows]);
 
+  // Groups the raw join rows into fragrance objects with their URL lists
   const fragrances = useMemo(() => {
     if (!rows) return {};
     const map: Record<
@@ -43,7 +46,7 @@ export default function Home() {
         id: string;
         name: string;
         brand: string;
-        urls: NonNullable<(typeof rows)[number]["retailer_url"]>[];
+        urls: RetailerUrl[];
       }
     > = {};
     for (const row of rows) {
@@ -54,16 +57,25 @@ export default function Home() {
     return map;
   }, [rows]);
 
-  async function handleAddFragrance() {
+  // Creates a new fragrance entry from the AddFragranceForm
+  async function handleAddFragrance(brand: string, name: string) {
     await addFragrance.mutateAsync({ name, brand });
-    setName("");
-    setBrand("");
   }
 
-  async function handleAddUrl(fragranceId: string) {
-    await addRetailerUrl.mutateAsync({ fragranceId, url: newUrl });
-    setNewUrl("");
+  // Adds a new retailer URL to a fragrance, then closes the add-URL form
+  async function handleAddUrl(fragranceId: string, url: string) {
+    await addRetailerUrl.mutateAsync({ fragranceId, url });
     setExpandedFragId(null);
+  }
+
+  // Deletes a single retailer URL (confirmation handled by UrlRow)
+  async function handleDeleteUrl(id: string) {
+    await deleteUrl.mutateAsync({ id });
+  }
+
+  // Deletes an entire fragrance and its URLs (confirmation handled by FragranceCard)
+  async function handleDeleteFragrance(id: string) {
+    await deleteFrag.mutateAsync({ id });
   }
 
   if (isPending) return <div>Loading...</div>;
@@ -76,38 +88,12 @@ export default function Home() {
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
-      <div className="flex items-center justify-between">
-        <h1 className="font-heading text-xl font-semibold">Frag Tracker</h1>
-        <div className="flex items-center gap-4">
-          <a href="/settings" className="text-sm text-muted-foreground hover:underline">
-            Settings
-          </a>
-          <span className="text-sm text-muted-foreground">{session.user?.name}</span>
-        </div>
-      </div>
+      <Header userName={session.user?.name ?? ""} />
 
-      <Card size="sm">
-        <CardHeader>
-          <CardTitle>Track Fragrance</CardTitle>
-        </CardHeader>
-        <CardContent>
-          <div className="flex gap-2">
-            <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand" />
-            <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
-            <Button onClick={handleAddFragrance}>Track</Button>
-          </div>
-          {supportedDomains && (
-            <div className="flex flex-wrap items-center gap-1 pt-6">
-              <span className="text-xs text-muted-foreground">Retailers:</span>
-              {supportedDomains.sort().map((d) => (
-                <Badge key={d} variant="outline" className="text-xs">
-                  {d.replace(/^www\./, "")}
-                </Badge>
-              ))}
-            </div>
-          )}
-        </CardContent>
-      </Card>
+      <AddFragranceForm
+        supportedDomains={supportedDomains ?? []}
+        onAdd={handleAddFragrance}
+      />
 
       <Separator />
 
@@ -125,98 +111,17 @@ export default function Home() {
       )}
 
       {fragList.map((frag) => (
-        <Card key={frag.id}>
-          <CardHeader>
-            <CardTitle>
-              {frag.brand} — {frag.name}
-            </CardTitle>
-            <CardAction>
-              <Button size="sm" onClick={() => setExpandedFragId(frag.id)}>
-                <Plus className="h-4 w-4" />
-                <Globe className="h-4 w-4" />
-              </Button>
-              <Button
-                size="sm"
-                className="ml-2"
-                onClick={() => {
-                  if (window.confirm("Delete this fragrance and all its URLs?"))
-                    deleteFrag.mutateAsync({ id: frag.id });
-                }}
-              >
-                <Trash2 className="h-4 w-4" />
-              </Button>
-            </CardAction>
-          </CardHeader>
-
-          <CardContent className="space-y-2">
-            {frag.urls.length === 0 && (
-              <p className="text-sm text-muted-foreground">No URLs tracked yet.</p>
-            )}
-            {[...frag.urls]
-              .sort((a, b) => {
-                const aPrice = latestPrices[a.id]
-                  ? parseFloat(latestPrices[a.id].amount)
-                  : Infinity;
-                const bPrice = latestPrices[b.id]
-                  ? parseFloat(latestPrices[b.id].amount)
-                  : Infinity;
-                return aPrice - bPrice;
-              })
-              .map((url) => (
-                <div
-                  key={url.id}
-                  className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm"
-                >
-                  <Button
-                    size="sm"
-                    variant="outline"
-                    onClick={() => {
-                      if (window.confirm("Delete this URL?")) deleteUrl.mutateAsync({ id: url.id });
-                    }}
-                  >
-                    <Trash2 className="h-4 w-4" />
-                  </Button>
-                  <span className="flex-1 font-medium">
-                    <a
-                      href={url.url}
-                      target="_blank"
-                      rel="noopener noreferrer"
-                      className="flex-1 font-medium hover:underline"
-                    >
-                      {new URL(url.url).hostname.replace(/^www\./, "")}
-                    </a>
-                  </span>
-
-                  {latestPrices[url.id] ? (
-                    <Badge variant="secondary">
-                      {latestPrices[url.id].currency === "USD"
-                        ? "$"
-                        : latestPrices[url.id].currency}{" "}
-                      {latestPrices[url.id].amount}
-                    </Badge>
-                  ) : (
-                    <span className="text-xs text-muted-foreground">—</span>
-                  )}
-                </div>
-              ))}
-
-            {expandedFragId === frag.id && (
-              <div className="flex gap-2 pt-1">
-                <Input
-                  value={newUrl}
-                  onChange={(e) => setNewUrl(e.target.value)}
-                  placeholder="Product URL"
-                />
-                <Button size="sm" onClick={() => handleAddUrl(frag.id)}>
-                  Save
-                </Button>
-                <Button size="sm" variant="ghost" onClick={() => setExpandedFragId(null)}>
-                  Cancel
-                </Button>
-              </div>
-            )}
-          </CardContent>
-        </Card>
+        <FragranceCard
+          key={frag.id}
+          fragrance={frag}
+          urls={frag.urls}
+          latestPrices={latestPrices}
+          expandedFragranceId={expandedFragId}
+          onExpand={setExpandedFragId}
+          onDeleteFragrance={handleDeleteFragrance}
+          onDeleteUrl={handleDeleteUrl}
+          onAddUrl={handleAddUrl}
+        />
       ))}
     </div>
   );
