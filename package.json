@@ -11,7 +11,10 @@
     "dev": "tsx watch server/server.ts",
     "start": "node dist/server.js",
     "build": "pnpm --filter client build && tsc -b tsconfig.build.json",
-    "scrape": "tsx scripts/scrape.ts"
+    "scrape": "tsx scripts/scrape.ts",
+    "lint": "oxlint",
+    "typecheck": "tsc -b tsconfig.build.json --noEmit",
+    "check": "pnpm lint && pnpm typecheck && pnpm --filter client lint"
   },
   "dependencies": {
     "@fastify/cors": "^11.3.0",
