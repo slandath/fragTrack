@@ -1,5 +1,6 @@
 import { defineConfig } from "drizzle-kit";
 import "dotenv/config";
+import { databaseSsl } from "./server/db/ssl.js";
 
 export default defineConfig({
   out: "./server/db/migrations",
@@ -7,6 +8,6 @@ export default defineConfig({
   dialect: "postgresql",
   dbCredentials: {
     url: process.env.DATABASE_URL!,
-    ssl: { rejectUnauthorized: false },
+    ssl: databaseSsl(),
   },
 });

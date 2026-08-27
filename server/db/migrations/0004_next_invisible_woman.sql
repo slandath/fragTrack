@@ -1,0 +1,1 @@
+CREATE INDEX "price_retailer_url_scraped_at_idx" ON "price" USING btree ("retailer_url_id","scraped_at" DESC NULLS LAST);

@@ -46,19 +46,20 @@ Scraping runs **locally only** — the server never launches a browser. Uses API
 pnpm scrape
 ```
 
-This calls `deleteAllPrices`, then `getUserUrls` via tRPC, scrapes each URL with Playwright, and POSTs results to `storePrice`.
+This loads `getUserUrls` via tRPC, scrapes each URL with Playwright, and appends successful observations with `storePrice`. Existing prices remain available when an individual scrape fails.
 
 ## Environment Variables
 
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | Postgres connection string |
+| `DATABASE_CA_CERT` | Trusted Postgres CA certificate in PEM format (literal `\\n` separators are supported) |
 | `BETTER_AUTH_SECRET` | better-auth signing secret |
 | `BETTER_AUTH_URL` | Auth base URL (dev: `http://localhost:5173`) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth app credentials |
 | `FRONTEND_URL` | CORS/origin for auth |
 | `API_URL` | tRPC endpoint for scrape script |
-| `API_KEY` | Auto-generated API key (from Settings page) |
+| `API_KEY` | Expiring API key created in Settings and displayed only once. Legacy UUID keys expire seven days after migration. |
 
 ## Database
 
