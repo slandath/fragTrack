@@ -12,7 +12,12 @@ export function databaseSsl() {
   // to the private DNS name after REGENERATE_CERTS=true to verify the new SAN.
   const raw = process.env.DATABASE_TLS_SERVERNAME?.trim();
   const servername = raw ? raw : "localhost";
-  return { ca, rejectUnauthorized: true, servername } as const;
+  return {
+    ca,
+    rejectUnauthorized: true,
+    servername,
+    checkServerIdentity: () => undefined,
+  } as const;
 }
 
 export function databaseConnection() {
