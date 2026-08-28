@@ -4,7 +4,15 @@ export function databaseSsl() {
     throw new Error("DATABASE_CA_CERT must contain the trusted Postgres CA certificate");
   }
 
-  return { ca, rejectUnauthorized: true } as const;
+  // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
+  // image historically issued DNS:localhost only (see init-ssl.sh SAN); newer
+  // images add DNS:${RAILWAY_PRIVATE_DOMAIN}. Default to localhost so the
+  // current postgres.railway.internal volume and any IP-based DATABASE_URL
+  // (no IP SAN) validate against the present cert; set DATABASE_TLS_SERVERNAME
+  // to the private DNS name after REGENERATE_CERTS=true to verify the new SAN.
+  const raw = process.env.DATABASE_TLS_SERVERNAME?.trim();
+  const servername = raw ? raw : "localhost";
+  return { ca, rejectUnauthorized: true, servername } as const;
 }
 
 export function databaseConnection() {
