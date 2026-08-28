@@ -4,7 +4,7 @@ export function databaseSsl() {
     throw new Error("DATABASE_CA_CERT must contain the trusted Postgres CA certificate");
   }
 
-  return { ca, rejectUnauthorized: true } as const;
+  return { ca, rejectUnauthorized: true, servername: "localhost" } as const;
 }
 
 export function databaseConnection() {
