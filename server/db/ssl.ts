@@ -1,17 +1,5 @@
 export function databaseSsl() {
-  const rawCa = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n")?.trim();
-  const ca = rawCa && rawCa.length ? rawCa : undefined;
-  if (!ca) return { rejectUnauthorized: false } as const;
-
-  // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
-  // image historically issued DNS:localhost only (see init-ssl.sh SAN); newer
-  // images add DNS:${RAILWAY_PRIVATE_DOMAIN}. Default to localhost so the
-  // current postgres.railway.internal volume and any IP-based DATABASE_URL
-  // (no IP SAN) validate against the present cert; set DATABASE_TLS_SERVERNAME
-  // to the private DNS name after REGENERATE_CERTS=true to verify the new SAN.
-  const raw = process.env.DATABASE_TLS_SERVERNAME?.trim();
-  const servername = raw ? raw : "localhost";
-  return { ca, rejectUnauthorized: true, servername } as const;
+  return { rejectUnauthorized: false } as const;
 }
 
 export function databaseConnection() {
