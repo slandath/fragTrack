@@ -1,8 +1,7 @@
 export function databaseSsl() {
-  const ca = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n");
-  if (!ca) {
-    throw new Error("DATABASE_CA_CERT must contain the trusted Postgres CA certificate");
-  }
+  const rawCa = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n")?.trim();
+  const ca = rawCa && rawCa.length ? rawCa : undefined;
+  if (!ca) return { rejectUnauthorized: false } as const;
 
   // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
   // image historically issued DNS:localhost only (see init-ssl.sh SAN); newer
