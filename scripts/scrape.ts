@@ -11,24 +11,46 @@ if (!API_URL || !API_KEY) {
   process.exit(1);
 }
 
+function validateApiUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("API_URL must be a valid URL");
+  }
+
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    url.hostname === "::1" ||
+    url.hostname.startsWith("127.");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("API_URL must use HTTPS unless it points to a loopback host");
+  }
+
+  return value.replace(/\/$/, "");
+}
+
+const validatedApiUrl = validateApiUrl(API_URL);
+
 async function readTrpcResponse(res: Response) {
   const json = await res.json();
   const payload = Array.isArray(json) ? json[0] : json;
   if (!res.ok || payload.error) {
-    throw new Error(payload.error?.json?.message ?? `tRPC request failed (${res.status})`);
+    throw new Error(payload.error?.message ?? `tRPC request failed (${res.status})`);
   }
   return payload.result.data;
 }
 
 async function trpcQuery(path: string) {
-  const res = await fetch(`${API_URL}/trpc/${path}`, {
+  const res = await fetch(`${validatedApiUrl}/trpc/${path}`, {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
   return readTrpcResponse(res);
 }
 
 async function trpcMutate(path: string, input: Record<string, unknown>) {
-  const res = await fetch(`${API_URL}/trpc/${path}`, {
+  const res = await fetch(`${validatedApiUrl}/trpc/${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${API_KEY}`,

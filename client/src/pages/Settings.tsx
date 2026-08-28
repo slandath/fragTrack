@@ -24,6 +24,7 @@ export default function Settings() {
     onSuccess: () => void utils.listApiKeys.invalidate(),
   });
 
+  const keyGenerationPending = createKey.isPending || rotateKey.isPending;
   const mutationError = createKey.error ?? rotateKey.error ?? revokeKey.error;
 
   return (
@@ -44,7 +45,10 @@ export default function Settings() {
             <p className="text-sm text-muted-foreground">
               Keys expire after 90 days. New keys are displayed only once.
             </p>
-            <Button onClick={() => createKey.mutate({})} disabled={createKey.isPending}>
+            <Button
+              onClick={() => createKey.mutate({})}
+              disabled={Boolean(revealedKey) || keyGenerationPending}
+            >
               Create key
             </Button>
           </div>
@@ -89,7 +93,9 @@ export default function Settings() {
                         variant="outline"
                         size="sm"
                         onClick={() => rotateKey.mutate({ id: key.id })}
-                        disabled={rotateKey.isPending || revokeKey.isPending}
+                        disabled={
+                          Boolean(revealedKey) || keyGenerationPending || revokeKey.isPending
+                        }
                       >
                         Rotate
                       </Button>
