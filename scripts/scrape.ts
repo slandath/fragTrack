@@ -11,16 +11,46 @@ if (!API_URL || !API_KEY) {
   process.exit(1);
 }
 
+function validateApiUrl(value: string) {
+  let url: URL;
+  try {
+    url = new URL(value);
+  } catch {
+    throw new Error("API_URL must be a valid URL");
+  }
+
+  const loopback =
+    url.hostname === "localhost" ||
+    url.hostname === "[::1]" ||
+    url.hostname === "::1" ||
+    url.hostname.startsWith("127.");
+  if (url.protocol !== "https:" && !(url.protocol === "http:" && loopback)) {
+    throw new Error("API_URL must use HTTPS unless it points to a loopback host");
+  }
+
+  return value.replace(/\/$/, "");
+}
+
+const validatedApiUrl = validateApiUrl(API_URL);
+
+async function readTrpcResponse(res: Response) {
+  const json = await res.json();
+  const payload = Array.isArray(json) ? json[0] : json;
+  if (!res.ok || payload.error) {
+    throw new Error(payload.error?.message ?? `tRPC request failed (${res.status})`);
+  }
+  return payload.result.data;
+}
+
 async function trpcQuery(path: string) {
-  const res = await fetch(`${API_URL}/trpc/${path}`, {
+  const res = await fetch(`${validatedApiUrl}/trpc/${path}`, {
     headers: { Authorization: `Bearer ${API_KEY}` },
   });
-  const json = await res.json();
-  return (Array.isArray(json) ? json[0] : json).result.data;
+  return readTrpcResponse(res);
 }
 
 async function trpcMutate(path: string, input: Record<string, unknown>) {
-  const res = await fetch(`${API_URL}/trpc/${path}`, {
+  const res = await fetch(`${validatedApiUrl}/trpc/${path}`, {
     method: "POST",
     headers: {
       Authorization: `Bearer ${API_KEY}`,
@@ -28,19 +58,18 @@ async function trpcMutate(path: string, input: Record<string, unknown>) {
     },
     body: JSON.stringify(input),
   });
-  const json = await res.json();
-  return (Array.isArray(json) ? json[0] : json).result.data;
+  return readTrpcResponse(res);
 }
 
 async function main() {
-  await trpcMutate("deleteAllPrices", {});
-  console.log("Cleared existing prices.\n");
   const urls: {
     retailer_url: { id: string; url: string };
     fragrance: { brand: string; name: string };
   }[] = await trpcQuery("getUserUrls");
 
   console.log(`\nScraping ${urls.length} URLs...\n`);
+  let stored = 0;
+  let failed = 0;
 
   for (let i = 0; i < urls.length; i++) {
     const { retailer_url, fragrance } = urls[i];
@@ -54,16 +83,23 @@ async function main() {
           amount: price.amount,
           currency: price.currency ?? "USD",
         });
+        stored++;
         console.log(`$${price.amount}`);
       } else {
+        failed++;
         console.log("No price found");
       }
     } catch (err) {
+      failed++;
       console.log(`Error: ${(err as Error).message}`);
     }
   }
 
-  console.log(`\nDone: ${urls.length}/${urls.length} URLs processed.\n`);
+  console.log(`\nDone: ${stored} observations stored, ${failed} failed.\n`);
+  if (failed > 0) process.exitCode = 1;
 }
 
-main().catch(console.error);
+main().catch((error) => {
+  console.error(error);
+  process.exitCode = 1;
+});

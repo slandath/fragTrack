@@ -22,6 +22,20 @@
       "when": 1784909215624,
       "tag": "0002_dark_caretaker",
       "breakpoints": true
+    },
+    {
+      "idx": 3,
+      "version": "7",
+      "when": 1787873772654,
+      "tag": "0003_misty_scalphunter",
+      "breakpoints": true
+    },
+    {
+      "idx": 4,
+      "version": "7",
+      "when": 1787873940885,
+      "tag": "0004_next_invisible_woman",
+      "breakpoints": true
     }
   ]
 }

@@ -16,8 +16,23 @@ export const user = pgTable("user", {
   banned: boolean("banned").default(false).notNull(),
   banReason: text("ban_reason"),
   banExpires: timestamp("ban_expires"),
-  apiKey: text("api_key"),
 });
+
+export const apiKey = pgTable(
+  "api_key",
+  {
+    id: text("id").primaryKey(),
+    userId: text("user_id")
+      .notNull()
+      .references(() => user.id, { onDelete: "cascade" }),
+    secretHash: text("secret_hash").notNull().unique(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    expiresAt: timestamp("expires_at").notNull(),
+    revokedAt: timestamp("revoked_at"),
+    lastUsedAt: timestamp("last_used_at"),
+  },
+  (table) => [index("api_key_user_id_idx").on(table.userId)],
+);
 
 export const session = pgTable(
   "session",
@@ -125,19 +140,33 @@ export const retailerUrl = pgTable("retailer_url", {
     .notNull(),
 });
 
-export const price = pgTable("price", {
-  id: text("id").primaryKey(),
-  retailerUrlId: text("retailer_url_id")
-    .notNull()
-    .references(() => retailerUrl.id, { onDelete: "cascade" }),
-  amount: text("amount").notNull(),
-  currency: text("currency").notNull().default("USD"),
-  scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
-});
+export const price = pgTable(
+  "price",
+  {
+    id: text("id").primaryKey(),
+    retailerUrlId: text("retailer_url_id")
+      .notNull()
+      .references(() => retailerUrl.id, { onDelete: "cascade" }),
+    amount: text("amount").notNull(),
+    currency: text("currency").notNull().default("USD"),
+    scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
+  },
+  (table) => [
+    index("price_retailer_url_scraped_at_idx").on(table.retailerUrlId, table.scrapedAt.desc()),
+  ],
+);
 
 export const userRelations = relations(user, ({ many }) => ({
   sessions: many(session),
   accounts: many(account),
+  apiKeys: many(apiKey),
+}));
+
+export const apiKeyRelations = relations(apiKey, ({ one }) => ({
+  user: one(user, {
+    fields: [apiKey.userId],
+    references: [user.id],
+  }),
 }));
 
 export const sessionRelations = relations(session, ({ one }) => ({
