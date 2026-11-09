@@ -53,7 +53,9 @@ This loads `getUserUrls` via tRPC, scrapes each URL with Playwright, and appends
 | Variable | Description |
 |---|---|
 | `DATABASE_URL` | Postgres connection string |
-| `DATABASE_CA_CERT` | Trusted Postgres CA certificate in PEM format (literal `\\n` separators are supported) |
+| `DATABASE_CA_CERT` | Trusted Postgres CA certificate in PEM format (literal `\\n` separators are supported). Required in production — startup fails without valid CA material. Without it (development only) certificate verification is skipped |
+| `DATABASE_TLS_SERVERNAME` | Optional TLS server-name override for verifying the Postgres certificate (defaults to `localhost`) |
+| `TEST_DATABASE_URL` | Disposable database for integration tests (never development or production) |
 | `BETTER_AUTH_SECRET` | better-auth signing secret |
 | `BETTER_AUTH_URL` | Auth base URL (dev: `http://localhost:5173`) |
 | `GITHUB_CLIENT_ID` / `GITHUB_CLIENT_SECRET` | GitHub OAuth app credentials |
@@ -68,4 +70,12 @@ pnpm db:generate   # generate migration from schema changes
 pnpm db:migrate    # apply migrations
 pnpm db:push       # push schema directly (dev)
 pnpm db:studio     # Drizzle Studio UI
+```
+
+## Testing
+
+```bash
+pnpm test             # unit tests (no database needed)
+pnpm test:unit        # same as above
+TEST_DATABASE_URL=postgresql://user:password@host:5432/fragtest pnpm test:integration
 ```

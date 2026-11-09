@@ -22,7 +22,19 @@ const isAuthed = t.middleware(async ({ ctx, next }) => {
   return next({ ctx: { ...ctx, user: currentUser } });
 });
 
-const protectedProcedure = t.procedure.use(isAuthed);
+// API keys authenticate only the local scrape workflow. They must be
+// rejected before any database access on procedures outside that scope.
+const denyApiKey = t.middleware(({ ctx, next }) => {
+  if (ctx.authType === "api-key") {
+    throw new TRPCError({ code: "FORBIDDEN", message: "API keys are limited to scrape operations" });
+  }
+  return next();
+});
+
+// Scrape operations stay available to both browser sessions and API keys.
+const scrapeProcedure = t.procedure.use(isAuthed);
+// Every other protected procedure requires a browser session.
+const sessionProcedure = t.procedure.use(denyApiKey).use(isAuthed);
 
 async function findOrCreateRetailer(url: string) {
   const hostname = new URL(url).hostname.replace(/^www\./, "");
@@ -60,7 +72,7 @@ export const appRouter = t.router({
     timestamp: Date.now(),
   })),
 
-  listApiKeys: protectedProcedure.query(async ({ ctx }) => {
+  listApiKeys: sessionProcedure.query(async ({ ctx }) => {
     return await db
       .select({
         id: apiKey.id,
@@ -73,7 +85,7 @@ export const appRouter = t.router({
       .where(eq(apiKey.userId, ctx.user.id))
       .orderBy(desc(apiKey.createdAt));
   }),
-  createApiKey: protectedProcedure
+  createApiKey: sessionProcedure
     .input(z.object({ expiresInDays: z.number().int().min(1).max(365).default(90) }))
     .mutation(async ({ ctx, input }) => {
       const generated = generateApiKey(input.expiresInDays);
@@ -85,7 +97,7 @@ export const appRouter = t.router({
       });
       return { apiKey: generated.key, id: generated.id, expiresAt: generated.expiresAt };
     }),
-  rotateApiKey: protectedProcedure
+  rotateApiKey: sessionProcedure
     .input(
       z.object({
         id: z.string(),
@@ -119,7 +131,7 @@ export const appRouter = t.router({
       if (!result) throw new TRPCError({ code: "NOT_FOUND", message: "Active API key not found" });
       return { apiKey: result.key, id: result.id, expiresAt: result.expiresAt };
     }),
-  revokeApiKey: protectedProcedure
+  revokeApiKey: sessionProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const revoked = await db
@@ -133,7 +145,7 @@ export const appRouter = t.router({
       return { id: revoked[0].id };
     }),
 
-  getFragrances: protectedProcedure.query(async ({ ctx }) => {
+  getFragrances: sessionProcedure.query(async ({ ctx }) => {
     return await db
       .select()
       .from(fragrance)
@@ -141,14 +153,14 @@ export const appRouter = t.router({
       .leftJoin(retailerUrl, eq(fragrance.id, retailerUrl.fragranceId));
   }),
 
-  getUserUrls: protectedProcedure.query(async ({ ctx }) => {
+  getUserUrls: scrapeProcedure.query(async ({ ctx }) => {
     return await db
       .select()
       .from(retailerUrl)
       .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
       .where(eq(fragrance.userId, ctx.user.id));
   }),
-  getLatestPrices: protectedProcedure.query(async ({ ctx }) => {
+  getLatestPrices: sessionProcedure.query(async ({ ctx }) => {
     return await db
       .selectDistinctOn([price.retailerUrlId], {
         retailerUrlId: price.retailerUrlId,
@@ -162,10 +174,10 @@ export const appRouter = t.router({
       .where(eq(fragrance.userId, ctx.user.id))
       .orderBy(price.retailerUrlId, desc(price.scrapedAt));
   }),
-  getSupportedDomains: protectedProcedure.query(async () => {
+  getSupportedDomains: sessionProcedure.query(async () => {
     return Object.keys(domainConfigs);
   }),
-  addFragrance: protectedProcedure
+  addFragrance: sessionProcedure
     .input(z.object({ name: z.string().min(1), brand: z.string().min(1) }))
     .mutation(async ({ ctx, input }) => {
       const id = crypto.randomUUID();
@@ -175,7 +187,7 @@ export const appRouter = t.router({
       return { id, name: input.name, brand: input.brand, userId: ctx.user.id };
     }),
 
-  addRetailerUrl: protectedProcedure
+  addRetailerUrl: sessionProcedure
     .input(z.object({ fragranceId: z.string(), url: z.string().url() }))
     .mutation(async ({ ctx, input }) => {
       await findFragrance(input.fragranceId, ctx.user.id);
@@ -195,7 +207,7 @@ export const appRouter = t.router({
 
       return { id, fragranceId: input.fragranceId, retailerId: r.id, url: input.url };
     }),
-  storePrice: protectedProcedure
+  storePrice: scrapeProcedure
     .input(z.object({ retailerUrlId: z.string(), amount: z.string(), currency: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const url = await db
@@ -210,7 +222,7 @@ export const appRouter = t.router({
       await db.insert(price).values({ id, ...input });
       return { id, ...input };
     }),
-  deleteRetailerUrl: protectedProcedure
+  deleteRetailerUrl: sessionProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const urlRows = await db
@@ -225,7 +237,7 @@ export const appRouter = t.router({
       await db.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
       await cleanupOrphanedRetailer(retailerId);
     }),
-  deleteFragrance: protectedProcedure
+  deleteFragrance: sessionProcedure
     .input(z.object({ id: z.string() }))
     .mutation(async ({ ctx, input }) => {
       const f = await findFragrance(input.id, ctx.user.id);

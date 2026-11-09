@@ -1,5 +1,28 @@
 export function databaseSsl() {
-  return { rejectUnauthorized: false } as const;
+  const rawCa = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n")?.trim();
+  const ca = rawCa && rawCa.length ? rawCa : undefined;
+  if (!ca) {
+    // Development-only relaxation: without CA material the server
+    // certificate cannot be verified. Production fails closed instead so a
+    // missing CA can never silently disable verification.
+    if (process.env.NODE_ENV === "production") {
+      throw new Error(
+        "DATABASE_CA_CERT is required in production so PostgreSQL TLS verification stays enabled",
+      );
+    }
+    return { rejectUnauthorized: false } as const;
+  }
+  if (!ca.includes("BEGIN CERTIFICATE")) {
+    throw new Error("DATABASE_CA_CERT is malformed: expected PEM certificate material");
+  }
+
+  // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
+  // image historically issued DNS:localhost only; newer images add the
+  // private DNS name. Default to localhost so IP-based DATABASE_URL values
+  // (no IP SAN) validate against the present cert; set
+  // DATABASE_TLS_SERVERNAME to the private DNS name when the cert carries it.
+  const servername = process.env.DATABASE_TLS_SERVERNAME?.trim() || "localhost";
+  return { ca, rejectUnauthorized: true, servername } as const;
 }
 
 export function databaseConnection() {
