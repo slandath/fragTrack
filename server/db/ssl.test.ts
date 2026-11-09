@@ -86,13 +86,14 @@ describe("databaseSsl", () => {
     });
   });
 
-  it("keeps the localhost default for DNS hosts", () => {
+  it("leaves servername unset for DNS hosts", () => {
+    // node-postgres verifies DNS hosts against the connection hostname, so
+    // no default is sent; the certificate must carry that DNS name.
     setTestCa();
     delete process.env.DATABASE_TLS_SERVERNAME;
-    expect(databaseSsl("postgres.railway.internal")).toMatchObject({
-      rejectUnauthorized: true,
-      servername: "localhost",
-    });
+    const ssl = databaseSsl("postgres.railway.internal") as unknown as Record<string, unknown>;
+    expect(ssl.rejectUnauthorized).toBe(true);
+    expect("servername" in ssl).toBe(false);
   });
 });
 
