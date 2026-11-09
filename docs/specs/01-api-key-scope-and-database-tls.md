@@ -10,9 +10,9 @@ P0 — security
 
 ## Context
 
-API keys are intended to authenticate the local scrape script. Today, a valid API key is converted into a full user session in `server/trpc/context.ts`. Because every protected tRPC procedure accepts that session, an API key can also create, rotate, and revoke keys; modify fragrances; and delete account data through procedures in `server/trpc/router.ts`.
+API keys are intended to authenticate the local scrape script. Before this spec, a valid API key was converted into a full user session in `server/trpc/context.ts`. Because every protected tRPC procedure accepted that session, an API key could also create, rotate, and revoke keys; modify fragrances; and delete account data through procedures in `server/trpc/router.ts`. This spec limits API keys to `getUserUrls` and `storePrice`.
 
-Separately, `server/db/ssl.ts` always disables PostgreSQL TLS certificate verification with `rejectUnauthorized: false`. The README and `.env.example` describe `DATABASE_CA_CERT` as a trusted CA input, but the current code ignores it.
+Separately, before this spec `server/db/ssl.ts` always disabled PostgreSQL TLS certificate verification with `rejectUnauthorized: false`. The README and `.env.example` described `DATABASE_CA_CERT` as a trusted CA input, but the code ignored it. This spec enables verification when CA material is configured and fails closed in production.
 
 ## Goals
 

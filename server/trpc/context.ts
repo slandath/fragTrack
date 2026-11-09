@@ -32,7 +32,12 @@ export const createContext = async ({ req }: CreateFastifyContextOptions) => {
         row?.user.banned && (!row.user.banExpires || row.user.banExpires > new Date());
 
       if (row && !activelyBanned && apiKeyHashMatches(parsed.secretHash, row.key.secretHash)) {
-        await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.key.id));
+        try {
+          await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.key.id));
+        } catch (error) {
+          // Usage telemetry must not reject an authenticated request.
+          console.error("Failed to update API key lastUsedAt:", error);
+        }
         return {
           db,
           session: { user: row.user, session: null },

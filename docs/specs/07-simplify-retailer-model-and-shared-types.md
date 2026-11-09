@@ -160,6 +160,8 @@ Compare these counts before and after migration on fixture data:
 - prices;
 - distinct retailer domains.
 
+Counts alone cannot catch reassignment: compare each URL's fragrance ID and each price's retailer-URL ID before and after migration, using fixtures with multiple users and URLs, so no price can silently move under the wrong URL or user.
+
 ## Dependencies
 
 - Complete Spec 03 before changing price-related types or storage.

@@ -1,5 +1,13 @@
-export function databaseSsl() {
-  const rawCa = process.env.DATABASE_CA_CERT?.replace(/\\n/g, "\n")?.trim();
+import { X509Certificate } from "node:crypto";
+
+function isIpLiteral(host: string): boolean {
+  return /^(\d{1,3}\.){3}\d{1,3}$/.test(host) || host.includes(":");
+}
+
+export function databaseSsl(serverHost?: string) {
+  // Operators store one-line PEM with literal \n separators; collapse a
+  // doubled backslash as well so \\n cannot corrupt the material.
+  const rawCa = process.env.DATABASE_CA_CERT?.replace(/\\\\n|\\n/g, "\n")?.trim();
   const ca = rawCa && rawCa.length ? rawCa : undefined;
   if (!ca) {
     // Development-only relaxation: without CA material the server
@@ -15,13 +23,26 @@ export function databaseSsl() {
   if (!ca.includes("BEGIN CERTIFICATE")) {
     throw new Error("DATABASE_CA_CERT is malformed: expected PEM certificate material");
   }
+  try {
+    new X509Certificate(ca);
+  } catch {
+    throw new Error("DATABASE_CA_CERT is malformed: certificate material did not parse");
+  }
 
   // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
   // image historically issued DNS:localhost only; newer images add the
   // private DNS name. Default to localhost so IP-based DATABASE_URL values
   // (no IP SAN) validate against the present cert; set
   // DATABASE_TLS_SERVERNAME to the private DNS name when the cert carries it.
-  const servername = process.env.DATABASE_TLS_SERVERNAME?.trim() || "localhost";
+  const servername = process.env.DATABASE_TLS_SERVERNAME?.trim() || undefined;
+  if (!servername) {
+    if (serverHost && isIpLiteral(serverHost)) {
+      throw new Error(
+        "DATABASE_TLS_SERVERNAME is required when DATABASE_URL uses an IP address: TLS cannot verify 'localhost' against that certificate",
+      );
+    }
+    return { ca, rejectUnauthorized: true, servername: "localhost" } as const;
+  }
   return { ca, rejectUnauthorized: true, servername } as const;
 }
 
@@ -40,16 +61,31 @@ export function databaseConnection() {
   }
 
   const database = decodeURIComponent(url.pathname.slice(1));
-  if (!url.hostname || !database) {
+  const host = url.hostname.replace(/^\[(.*)\]$/, "$1");
+  if (!host || !database) {
     throw new Error("DATABASE_URL must include a host and database name");
   }
 
+  // Explicit opt-out for servers without TLS (local and disposable test
+  // databases). Production defaults are unchanged: TLS applies unless the
+  // operator deliberately disables it here.
+  if (url.searchParams.get("sslmode") === "disable") {
+    return {
+      host,
+      port: url.port ? Number(url.port) : undefined,
+      user: url.username ? decodeURIComponent(url.username) : undefined,
+      password: url.password ? decodeURIComponent(url.password) : undefined,
+      database,
+      ssl: false as const,
+    };
+  }
+
   return {
-    host: url.hostname.replace(/^\[(.*)\]$/, "$1"),
+    host,
     port: url.port ? Number(url.port) : undefined,
     user: url.username ? decodeURIComponent(url.username) : undefined,
     password: url.password ? decodeURIComponent(url.password) : undefined,
     database,
-    ssl: databaseSsl(),
+    ssl: databaseSsl(host),
   };
 }

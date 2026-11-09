@@ -78,4 +78,5 @@ pnpm db:studio     # Drizzle Studio UI
 pnpm test             # unit tests (no database needed)
 pnpm test:unit        # same as above
 TEST_DATABASE_URL=postgresql://user:password@host:5432/fragtest pnpm test:integration
+# append ?sslmode=disable to TEST_DATABASE_URL when the test server has no TLS
 ```

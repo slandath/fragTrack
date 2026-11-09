@@ -1,6 +1,11 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 import type { Context } from "./context.js";
 import { appRouter } from "./router.js";
+
+// These tests assert authorization denials that must happen before any
+// database access. Mock the database module so they never read database
+// configuration and cannot touch a database under any environment.
+vi.mock("../index.js", () => ({ db: {} }));
 
 // Authorization scope (Spec 01): API keys may call only the scrape workflow
 // procedures. These tests use a caller with no working database handle, so a

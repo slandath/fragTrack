@@ -90,6 +90,7 @@ The scrape script should print a concise summary by category and retailer domain
 - Verify fragrance ownership, validate and canonicalize the URL, resolve the retailer, and insert the retailer URL without leaving avoidable partial state.
 - Coordinate duplicate behavior with Spec 03.
 - If retailer creation succeeds but URL insertion fails, the transaction or cleanup behavior must be deterministic.
+- Coordinate add and orphan-cleanup across one transaction or a recovery path: if cleanup commits after an add resolves a retailer but before it inserts the URL, the insert must not fail its foreign-key check. Test this interleaving rather than relying on separate transactions.
 
 ### Delete retailer URL
 

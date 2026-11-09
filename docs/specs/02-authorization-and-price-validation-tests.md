@@ -10,7 +10,7 @@ P0 — regression prevention
 
 ## Context
 
-The repository has no tracked automated tests. `vp test` currently reports that no test files exist, and CI only runs lint and build. The highest-risk behavior—a user isolation boundary, API-key authentication, banned-user handling, and price writes—can therefore change without an automated failure.
+Before this spec the repository had no tracked automated tests: `vp test` reported that no test files exist, and CI only ran lint and build. This spec adds the foundation — unit tests for API-key scope, TLS configuration, key utilities, and scraper price-text fixtures, plus disposable-database integration tests for user isolation and API-key lifecycle. The remaining work is the final price-validation and parser coverage defined by Specs 03 and 04, and CI wiring defined by Spec 05. The highest-risk behavior—a user isolation boundary, API-key authentication, banned-user handling, and price writes—can therefore no longer change without an automated failure.
 
 This spec establishes the smallest useful automated test foundation for the project. It is not a mandate for exhaustive coverage.
 

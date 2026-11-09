@@ -1,5 +1,5 @@
 import { beforeAll, afterAll, describe, expect, it } from "vitest";
-import { eq } from "drizzle-orm";
+import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import crypto from "node:crypto";
 import { apiKey, fragrance, price, retailer, retailerUrl, user } from "../db/schema.js";
@@ -110,12 +110,18 @@ async function seed() {
   ]);
 }
 
+// Cleanup is restricted to rows created by this run so a misconfigured
+// TEST_DATABASE_URL can never wipe unrelated data. Prices stored during the
+// run reference the seeded retailer URLs, so filtering by those covers them.
 async function cleanup() {
-  await db.delete(price);
-  await db.delete(retailerUrl);
-  await db.delete(fragrance);
-  await db.delete(apiKey);
-  await db.delete(user);
+  const keyIds = [keys.valid, keys.expired, keys.revoked, keys.bannedUser, keys.otherUser].map(
+    (k) => k.id,
+  );
+  await db.delete(price).where(inArray(price.retailerUrlId, [ids.urlA, ids.urlB]));
+  await db.delete(retailerUrl).where(inArray(retailerUrl.id, [ids.urlA, ids.urlB]));
+  await db.delete(fragrance).where(inArray(fragrance.id, [ids.fragA, ids.fragB]));
+  await db.delete(apiKey).where(inArray(apiKey.id, keyIds));
+  await db.delete(user).where(inArray(user.id, [ids.userA, ids.userB, ids.banned]));
   await db.delete(retailer).where(eq(retailer.id, ids.retailerId));
 }
 

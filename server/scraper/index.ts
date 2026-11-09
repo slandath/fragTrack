@@ -7,11 +7,12 @@ const chromium = addExtra(playwrightChromium);
 chromium.use(StealthPlugin());
 
 // Pure price-text cleanup shared by the scraper. The current contract strips
-// everything except digits and decimal points; ranges, ambiguous values, and
-// multi-decimal handling are defined by Spec 04.
+// everything except digits and decimal points and requires at least one
+// digit, so non-price text never becomes a "." price. Ranges, ambiguous
+// values, and multi-decimal handling are defined by Spec 04.
 export function parsePriceText(raw: string | null | undefined): string | null {
   const cleaned = raw?.trim().replace(/[^0-9.]/g, "") ?? "";
-  return cleaned ? cleaned : null;
+  return /[0-9]/.test(cleaned) ? cleaned : null;
 }
 
 export async function scrapePrice(url: string) {

@@ -84,7 +84,8 @@ Apply the same principles to Settings actions where practical.
 2. Use the existing Better Auth client sign-out method.
 3. After successful sign-out, navigate to `/login`.
 4. Show an error if sign-out fails.
-5. Ensure protected cached query data is cleared or no longer displayed after sign-out.
+5. Ensure protected cached query data is cleared or isolated across session changes so it cannot be displayed to a different user after sign-out.
+   - Test an account switch across two tabs and confirm the second user cannot see the first user's cached data.
 
 ## Destructive actions
 

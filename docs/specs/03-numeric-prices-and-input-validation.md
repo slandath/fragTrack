@@ -61,6 +61,7 @@ Do not use floating-point storage for money.
    - valid decimal values convert to the new representation;
    - invalid values must be reported and handled by an explicit policy;
    - migration must not silently turn ambiguous values into plausible prices.
+   - numeric-looking legacy values whose correctness cannot be verified (for example a stored `2030` that may have come from a `$20–$30` range) must follow an explicit operator policy: quarantine them for manual review or exclude them from displayed prices rather than preserving them as if they were observed amounts. The database retains no source text, so this decision cannot be reconstructed later.
 7. Preserve `scraped_at` history and retailer-url relationships.
 
 ## API validation requirements
