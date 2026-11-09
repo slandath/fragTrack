@@ -29,19 +29,22 @@ export function databaseSsl(serverHost?: string) {
     throw new Error("DATABASE_CA_CERT is malformed: certificate material did not parse");
   }
 
-  // Deployment-specific SNI/hostname for verify-full. Railway's postgres-ssl
-  // image historically issued DNS:localhost only; newer images add the
-  // private DNS name. Default to localhost so IP-based DATABASE_URL values
-  // (no IP SAN) validate against the present cert; set
-  // DATABASE_TLS_SERVERNAME to the private DNS name when the cert carries it.
+  // SNI/hostname for verify-full. node-postgres overwrites servername with
+  // the connection hostname for DNS names (see upgradeToSSL in
+  // pg/lib/connection.js), so an override only takes effect for IP-based
+  // DATABASE_URL values. DNS hosts are always verified against the
+  // connection hostname, which means the server certificate must carry that
+  // DNS name as a SAN — a localhost-only certificate cannot verify a
+  // postgres.railway.internal connection. Regenerate the database
+  // certificate with the private DNS SAN instead of overriding here.
   const servername = process.env.DATABASE_TLS_SERVERNAME?.trim() || undefined;
   if (!servername) {
     if (serverHost && isIpLiteral(serverHost)) {
       throw new Error(
-        "DATABASE_TLS_SERVERNAME is required when DATABASE_URL uses an IP address: TLS cannot verify 'localhost' against that certificate",
+        "DATABASE_TLS_SERVERNAME is required when DATABASE_URL uses an IP address: TLS cannot verify the connection without an explicit identity",
       );
     }
-    return { ca, rejectUnauthorized: true, servername: "localhost" } as const;
+    return { ca, rejectUnauthorized: true } as const;
   }
   return { ca, rejectUnauthorized: true, servername } as const;
 }
