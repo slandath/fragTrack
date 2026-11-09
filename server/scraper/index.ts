@@ -6,6 +6,15 @@ import { domainConfigs } from "./configs.js";
 const chromium = addExtra(playwrightChromium);
 chromium.use(StealthPlugin());
 
+// Pure price-text cleanup shared by the scraper. The current contract strips
+// everything except digits and decimal points and requires at least one
+// digit, so non-price text never becomes a "." price. Ranges, ambiguous
+// values, and multi-decimal handling are defined by Spec 04.
+export function parsePriceText(raw: string | null | undefined): string | null {
+  const cleaned = raw?.trim().replace(/[^0-9.]/g, "") ?? "";
+  return /[0-9]/.test(cleaned) ? cleaned : null;
+}
+
 export async function scrapePrice(url: string) {
   try {
     const browser = await chromium.launch({
@@ -30,7 +39,7 @@ export async function scrapePrice(url: string) {
       await page.waitForSelector(config.selectors.price, { timeout: 10000 }).catch(() => {});
       const el = await page.$(config.selectors.price);
       if (el) {
-        const raw = (await el.textContent())?.trim().replace(/[^0-9.]/g, "") ?? null;
+        const raw = parsePriceText(await el.textContent());
         if (raw) {
           amount = raw;
           currency = config.selectors.currency ?? "USD";

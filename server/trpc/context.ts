@@ -6,6 +6,8 @@ import { auth } from "../utils/auth.js";
 import { apiKey, user } from "../db/schema.js";
 import { apiKeyHashMatches, parseApiKey } from "../utils/api-key.js";
 
+export type AuthType = "session" | "api-key" | "none";
+
 export const createContext = async ({ req }: CreateFastifyContextOptions) => {
   const authorization = req.headers.authorization;
   if (authorization) {
@@ -30,16 +32,27 @@ export const createContext = async ({ req }: CreateFastifyContextOptions) => {
         row?.user.banned && (!row.user.banExpires || row.user.banExpires > new Date());
 
       if (row && !activelyBanned && apiKeyHashMatches(parsed.secretHash, row.key.secretHash)) {
-        await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.key.id));
-        return { db, session: { user: row.user, session: null } };
+        try {
+          await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.key.id));
+        } catch (error) {
+          // Usage telemetry must not reject an authenticated request.
+          console.error("Failed to update API key lastUsedAt:", error);
+        }
+        return {
+          db,
+          session: { user: row.user, session: null },
+          authType: "api-key" as const,
+          apiKeyId: row.key.id,
+        };
       }
     }
 
-    return { db, session: null };
+    // An Authorization header never falls through to cookie sessions.
+    return { db, session: null, authType: "none" as const };
   }
 
   const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-  return { db, session };
+  return { db, session, authType: session?.user ? ("session" as const) : ("none" as const) };
 };
 
 export type Context = Awaited<ReturnType<typeof createContext>>;
