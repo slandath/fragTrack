@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useId, useRef, useState, type FormEvent } from "react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardHeader, CardTitle, CardContent, CardAction } from "@/components/ui/card";
@@ -12,23 +12,47 @@ export default function FragranceCard({
   latestPrices,
   expandedFragranceId,
   onExpand,
-  onDeleteFragrance,
-  onDeleteUrl,
+  onRequestDeleteFragrance,
+  onRequestDeleteUrl,
   onAddUrl,
   addUrlPending,
+  addUrlError,
   deleteFragrancePending,
   deleteUrlPending,
 }: FragranceCardProps) {
   const [newUrl, setNewUrl] = useState("");
+  const [urlError, setUrlError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const addButtonRef = useRef<HTMLButtonElement>(null);
+  const inputId = useId();
+  const errorId = useId();
 
   const isExpanded = expandedFragranceId === fragrance.id;
 
-  async function handleAddUrl() {
+  useEffect(() => {
+    if (isExpanded) inputRef.current?.focus();
+  }, [isExpanded]);
+
+  function closeForm() {
+    setNewUrl("");
+    setUrlError(null);
+    onExpand(null);
+    requestAnimationFrame(() => addButtonRef.current?.focus());
+  }
+
+  async function handleAddUrl(event: FormEvent<HTMLFormElement>) {
+    event.preventDefault();
+    const trimmed = newUrl.trim();
+    if (!trimmed) {
+      setUrlError("Enter a product URL.");
+      return;
+    }
+    setUrlError(null);
     try {
-      await onAddUrl(fragrance.id, newUrl);
-      setNewUrl("");
+      await onAddUrl(fragrance.id, trimmed);
+      closeForm();
     } catch {
-      // Error is already logged by the onError callback on the mutation
+      // The mutation error is displayed below; keep the input for correction.
     }
   }
 
@@ -43,23 +67,28 @@ export default function FragranceCard({
   return (
     <Card>
       <CardHeader>
-        <CardTitle>
+        <CardTitle className="break-words">
           {fragrance.brand} &mdash; {fragrance.name}
         </CardTitle>
         <CardAction>
-          <Button size="sm" aria-label="Add retailer URL" onClick={() => onExpand(fragrance.id)}>
+          <Button
+            ref={addButtonRef}
+            size="sm"
+            aria-label={`Add retailer URL for ${fragrance.name}`}
+            aria-expanded={isExpanded}
+            onClick={() => onExpand(isExpanded ? null : fragrance.id)}
+          >
             <Plus className="h-4 w-4" />
             <Globe className="h-4 w-4" />
           </Button>
           <Button
             size="sm"
             className="ml-2"
-            aria-label="Delete fragrance"
+            aria-label={`Delete ${fragrance.name}`}
             disabled={deleteFragrancePending}
-            onClick={() => {
-              if (window.confirm("Delete this fragrance and all its URLs?"))
-                onDeleteFragrance(fragrance.id);
-            }}
+            onClick={() =>
+              onRequestDeleteFragrance(fragrance.id, `${fragrance.brand} — ${fragrance.name}`)
+            }
           >
             <Trash2 className="h-4 w-4" />
           </Button>
@@ -72,24 +101,48 @@ export default function FragranceCard({
             key={url.id}
             url={url}
             price={latestPrices[url.id]}
-            onDelete={onDeleteUrl}
+            onRequestDelete={onRequestDeleteUrl}
             deletePending={deleteUrlPending}
           />
         ))}
         {isExpanded && (
-          <div className="flex gap-2 pt-1">
-            <Input
-              value={newUrl}
-              onChange={(e) => setNewUrl(e.target.value)}
-              placeholder="Product URL"
-            />
-            <Button size="sm" onClick={handleAddUrl} disabled={addUrlPending}>
-              Save
-            </Button>
-            <Button size="sm" variant="ghost" onClick={() => onExpand(null)}>
-              Cancel
-            </Button>
-          </div>
+          <form onSubmit={handleAddUrl} noValidate className="space-y-1 pt-1">
+            <label htmlFor={inputId} className="text-xs font-medium">
+              Product URL
+            </label>
+            <div className="flex gap-2">
+              <Input
+                id={inputId}
+                ref={inputRef}
+                type="url"
+                value={newUrl}
+                onChange={(event) => setNewUrl(event.target.value)}
+                placeholder="https://retailer.example/product"
+                required
+                maxLength={2048}
+                inputMode="url"
+                autoComplete="url"
+                aria-invalid={Boolean(urlError)}
+                aria-describedby={urlError ? errorId : undefined}
+              />
+              <Button type="submit" size="sm" disabled={addUrlPending}>
+                {addUrlPending ? "Saving…" : "Save"}
+              </Button>
+              <Button type="button" size="sm" variant="ghost" onClick={closeForm}>
+                Cancel
+              </Button>
+            </div>
+            {urlError && (
+              <p id={errorId} role="alert" className="text-xs text-destructive">
+                {urlError}
+              </p>
+            )}
+            {addUrlError && (
+              <p role="alert" className="break-words text-xs text-destructive">
+                Could not add URL: {addUrlError}
+              </p>
+            )}
+          </form>
         )}
       </CardContent>
     </Card>

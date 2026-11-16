@@ -15,29 +15,18 @@ export interface PriceInfo {
   scrapedAt?: string | Date;
 }
 
-/**
- * Format integer minor units as a localized currency string.
- * Fraction digits are fixed at two so the display always matches the
- * fixed-hundredths storage contract, even for zero-decimal currencies
- * such as JPY.
- */
-export function formatPrice(amountMinor: number, currency: string): string {
-  return new Intl.NumberFormat("en-US", {
-    style: "currency",
-    currency,
-    minimumFractionDigits: 2,
-    maximumFractionDigits: 2,
-  }).format(amountMinor / 100);
-}
-
 export interface HeaderProps {
   userName: string;
+  onSignOut: () => void;
+  signOutPending: boolean;
+  signOutError?: string | null;
 }
 
 export interface AddFragranceFormProps {
   supportedDomains: string[];
   onAdd: (brand: string, name: string) => Promise<void>;
   isPending: boolean;
+  error?: string | null;
 }
 
 export interface FragranceCardProps {
@@ -46,10 +35,11 @@ export interface FragranceCardProps {
   latestPrices: Record<string, PriceInfo | undefined>;
   expandedFragranceId: string | null;
   onExpand: (id: string | null) => void;
-  onDeleteFragrance: (id: string) => Promise<void>;
-  onDeleteUrl: (id: string) => Promise<void>;
+  onRequestDeleteFragrance: (id: string, label: string) => void;
+  onRequestDeleteUrl: (id: string, label: string) => void;
   onAddUrl: (fragranceId: string, url: string) => Promise<void>;
   addUrlPending: boolean;
+  addUrlError?: string | null;
   deleteFragrancePending: boolean;
   deleteUrlPending: boolean;
 }
@@ -57,6 +47,6 @@ export interface FragranceCardProps {
 export interface UrlRowProps {
   url: RetailerUrl;
   price: PriceInfo | undefined;
-  onDelete: (id: string) => Promise<void>;
+  onRequestDelete: (id: string, label: string) => void;
   deletePending: boolean;
 }
