@@ -40,13 +40,22 @@ cd client && pnpm dev   # starts Vite at :5173
 
 ## Scraping
 
-Scraping runs **locally only** — the server never launches a browser. Uses API key auth:
+Scraping runs **locally only** — the server never launches a browser. Uses API key auth. API keys are limited to the scrape operations `getUserUrls` and `storePrice`; every other protected procedure requires a browser session and rejects API keys with `FORBIDDEN`:
 
 ```bash
 pnpm scrape
 ```
 
 This loads `getUserUrls` via tRPC, scrapes each URL with Playwright, and appends successful observations with `storePrice`. Existing prices remain available when an individual scrape fails.
+
+## Prices and URLs
+
+- Prices are stored as integer minor units (`amountMinor`, e.g. 2499 = $24.99) with a three-letter uppercase currency code. Floating point never touches money.
+- The API accepts only exact amounts from 1 to 99,999,999 minor units (max $999,999.99). Zero and negative amounts are rejected, values with more than two decimals are rejected rather than rounded, and currency must match `^[A-Z]{3}$`.
+- Ambiguous scraper text — price ranges, multi-decimal values, signs, extra numbers — is rejected instead of concatenated into a plausible amount.
+- The dashboard formats with `Intl.NumberFormat` and sorts numerically; no `parseFloat` on text.
+- Retailer URLs must use http/https, contain no credentials, and belong to a supported domain. They are stored in canonical form (lowercased host, default ports and fragments removed; path and query preserved) and a duplicate URL for the same fragrance is rejected with a clear error.
+- Migration `0005` converts valid legacy decimal amounts to cents and aborts with a row report when a value cannot be safely converted, so ambiguous history is never silently rewritten. All changes roll back on abort.
 
 ## Environment Variables
 

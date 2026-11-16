@@ -138,6 +138,8 @@ describe("unauthenticated requests", () => {
   it("rejects protected procedures", async () => {
     await expect(anonCaller.getUserUrls()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonCaller.getFragrances()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(anonCaller.getLatestPrices()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
+    await expect(anonCaller.listApiKeys()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
   it("keeps healthcheck public", async () => {
@@ -156,10 +158,11 @@ describe("session user isolation", () => {
     expect(urls.map((u) => u.retailer_url.id)).not.toContain(ids.urlB);
     const stored = await caller.storePrice({
       retailerUrlId: ids.urlA,
-      amount: "24.99",
+      amountMinor: 2499,
       currency: "USD",
     });
     expect(stored.retailerUrlId).toBe(ids.urlA);
+    expect(stored.amountMinor).toBe(2499);
   });
 
   it("blocks cross-user reads, writes, and deletes", async () => {
@@ -168,7 +171,7 @@ describe("session user isolation", () => {
       caller.addRetailerUrl({ fragranceId: ids.fragB, url: "https://fragrancex.com/evil" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(
-      caller.storePrice({ retailerUrlId: ids.urlB, amount: "10.00", currency: "USD" }),
+      caller.storePrice({ retailerUrlId: ids.urlB, amountMinor: 1000, currency: "USD" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
     await expect(caller.deleteFragrance({ id: ids.fragB })).rejects.toMatchObject({
       code: "NOT_FOUND",
@@ -188,6 +191,23 @@ describe("session user isolation", () => {
     const caller = sessionCaller(ids.banned);
     await expect(caller.getFragrances()).rejects.toMatchObject({ code: "FORBIDDEN" });
   });
+
+  it("isolates latest prices and API-key metadata per user", async () => {
+    const callerA = sessionCaller(ids.userA);
+    const callerB = sessionCaller(ids.userB);
+    await callerA.storePrice({ retailerUrlId: ids.urlA, amountMinor: 1111, currency: "USD" });
+    await callerB.storePrice({ retailerUrlId: ids.urlB, amountMinor: 2222, currency: "USD" });
+
+    const latestA = await callerA.getLatestPrices();
+    const latestUrlIds = latestA.map((p) => p.retailerUrlId);
+    expect(latestUrlIds).toContain(ids.urlA);
+    expect(latestUrlIds).not.toContain(ids.urlB);
+
+    const keysA = await callerA.listApiKeys();
+    const keyIds = keysA.map((k) => k.id);
+    expect(keyIds).toContain(keys.valid.id);
+    expect(keyIds).not.toContain(keys.otherUser.id);
+  });
 });
 
 describe("API-key scope and lifecycle", () => {
@@ -198,7 +218,7 @@ describe("API-key scope and lifecycle", () => {
     expect(urls.map((u) => u.retailer_url.id)).not.toContain(ids.urlB);
     const stored = await caller.storePrice({
       retailerUrlId: ids.urlA,
-      amount: "99.50",
+      amountMinor: 9950,
       currency: "USD",
     });
     expect(stored.retailerUrlId).toBe(ids.urlA);
@@ -234,7 +254,7 @@ describe("API-key scope and lifecycle", () => {
   it("rejects cross-user prices even for otherwise valid keys", async () => {
     const caller = await keyCaller(keys.valid.key);
     await expect(
-      caller.storePrice({ retailerUrlId: ids.urlB, amount: "10.00", currency: "USD" }),
+      caller.storePrice({ retailerUrlId: ids.urlB, amountMinor: 1000, currency: "USD" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
   });
 
@@ -259,11 +279,80 @@ describe("API-key scope and lifecycle", () => {
   });
 });
 
-describe("price writes (current contract)", () => {
+describe("price writes (numeric contract)", () => {
   it("rejects missing retailer URLs", async () => {
     const caller = sessionCaller(ids.userA);
     await expect(
-      caller.storePrice({ retailerUrlId: "does-not-exist", amount: "10.00", currency: "USD" }),
+      caller.storePrice({ retailerUrlId: "does-not-exist", amountMinor: 1000, currency: "USD" }),
     ).rejects.toMatchObject({ code: "NOT_FOUND" });
+  });
+
+  it("rejects invalid amounts and currencies before any write", async () => {
+    const caller = sessionCaller(ids.userA);
+    for (const input of [
+      { retailerUrlId: ids.urlA, amountMinor: 0, currency: "USD" },
+      { retailerUrlId: ids.urlA, amountMinor: -500, currency: "USD" },
+      { retailerUrlId: ids.urlA, amountMinor: 100_000_000, currency: "USD" },
+      { retailerUrlId: ids.urlA, amountMinor: 24.99, currency: "USD" },
+      { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" },
+      { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "USDD" },
+      { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "" },
+      { retailerUrlId: "", amountMinor: 1000, currency: "USD" },
+    ]) {
+      await expect(caller.storePrice(input)).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    }
+    // No partial row may have been stored for the rejected inputs.
+    const latest = await caller.getLatestPrices();
+    expect(latest.map((p) => p.amountMinor).every((m) => Number.isInteger(m) && m > 0)).toBe(true);
+  });
+
+  it("enforces the numeric guards at the database level", async () => {
+    await expect(
+      db.insert(price).values({ id: `price-bad-${runId}`, retailerUrlId: ids.urlA, amountMinor: 0, currency: "USD" }),
+    ).rejects.toThrow();
+    await expect(
+      db.insert(price).values({ id: `price-bad2-${runId}`, retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" }),
+    ).rejects.toThrow();
+  });
+});
+
+describe("fragrance and retailer-URL validation", () => {
+  it("trims names and rejects blank or overlong text", async () => {
+    const caller = sessionCaller(ids.userA);
+    const created = await caller.addFragrance({ name: "  Noir  ", brand: " House " });
+    expect(created.name).toBe("Noir");
+    expect(created.brand).toBe("House");
+    await expect(caller.addFragrance({ name: "   ", brand: "House" })).rejects.toMatchObject({
+      code: "BAD_REQUEST",
+    });
+    await expect(
+      caller.addFragrance({ name: "n".repeat(101), brand: "House" }),
+    ).rejects.toMatchObject({ code: "BAD_REQUEST" });
+    await db.delete(fragrance).where(eq(fragrance.id, created.id));
+  });
+
+  it("rejects bad retailer URLs and duplicate canonical URLs", async () => {
+    const caller = sessionCaller(ids.userA);
+    for (const url of [
+      "ftp://fragrancex.com/p",
+      "https://user:pass@fragrancex.com/p",
+      "https://evil.com/p",
+      "not a url",
+    ]) {
+      await expect(caller.addRetailerUrl({ fragranceId: ids.fragA, url })).rejects.toMatchObject({
+        code: "BAD_REQUEST",
+      });
+    }
+    const first = await caller.addRetailerUrl({
+      fragranceId: ids.fragA,
+      url: "https://fragrancex.com/unique-dupe-check",
+    });
+    await expect(
+      caller.addRetailerUrl({
+        fragranceId: ids.fragA,
+        url: "https://fragrancex.com:443/unique-dupe-check#frag",
+      }),
+    ).rejects.toMatchObject({ code: "CONFLICT" });
+    await caller.deleteRetailerUrl({ id: first.id });
   });
 });

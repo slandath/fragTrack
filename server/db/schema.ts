@@ -1,5 +1,13 @@
-import { relations } from "drizzle-orm";
-import { boolean, index, pgTable, text, timestamp } from "drizzle-orm/pg-core";
+import { relations, sql } from "drizzle-orm";
+import {
+  boolean,
+  check,
+  index,
+  integer,
+  pgTable,
+  text,
+  timestamp,
+} from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
   id: text("id").primaryKey(),
@@ -147,12 +155,15 @@ export const price = pgTable(
     retailerUrlId: text("retailer_url_id")
       .notNull()
       .references(() => retailerUrl.id, { onDelete: "cascade" }),
-    amount: text("amount").notNull(),
+    // Exact integer minor units (cents). Never floating point.
+    amountMinor: integer("amount_minor").notNull(),
     currency: text("currency").notNull().default("USD"),
     scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
   },
   (table) => [
     index("price_retailer_url_scraped_at_idx").on(table.retailerUrlId, table.scrapedAt.desc()),
+    check("price_amount_minor_range", sql`${table.amountMinor} > 0 AND ${table.amountMinor} <= 99999999`),
+    check("price_currency_code", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );
 

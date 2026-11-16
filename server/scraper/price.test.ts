@@ -1,25 +1,43 @@
 import { describe, expect, it } from "vitest";
-import { parsePriceText } from "./index.js";
+import { parsePriceToMinor } from "./index.js";
 
 // Fixture tests for the scraper price-text helper. No network access.
-// Ranges and multi-decimal values are intentionally unasserted here: their
-// contract is defined by Spec 04, which hardens this parser.
-describe("parsePriceText", () => {
-  it("parses plain and grouped dollar amounts", () => {
-    expect(parsePriceText("$24.99")).toBe("24.99");
-    expect(parsePriceText("$1,299.99")).toBe("1299.99");
+// Anything ambiguous (ranges, extra numbers, multi-decimal values) is
+// rejected rather than concatenated into a plausible amount.
+describe("parsePriceToMinor", () => {
+  it("parses plain and grouped dollar amounts to cents", () => {
+    expect(parsePriceToMinor("$24.99")).toBe(2499);
+    expect(parsePriceToMinor("$1,299.99")).toBe(129999);
+    expect(parsePriceToMinor("24.99")).toBe(2499);
   });
 
   it("handles currency-prefixed and currency-suffixed values", () => {
-    expect(parsePriceText("USD 24.99")).toBe("24.99");
-    expect(parsePriceText("24.99 USD")).toBe("24.99");
+    expect(parsePriceToMinor("USD 24.99")).toBe(2499);
+    expect(parsePriceToMinor("24.99 USD")).toBe(2499);
+    expect(parsePriceToMinor("€19.50")).toBe(1950);
   });
 
   it("rejects empty and alphabetic values", () => {
-    expect(parsePriceText("")).toBeNull();
-    expect(parsePriceText("   ")).toBeNull();
-    expect(parsePriceText(null)).toBeNull();
-    expect(parsePriceText(undefined)).toBeNull();
-    expect(parsePriceText("out of stock")).toBeNull();
+    expect(parsePriceToMinor("")).toBeNull();
+    expect(parsePriceToMinor("   ")).toBeNull();
+    expect(parsePriceToMinor(null)).toBeNull();
+    expect(parsePriceToMinor(undefined)).toBeNull();
+    expect(parsePriceToMinor("out of stock")).toBeNull();
+  });
+
+  it("rejects ranges instead of concatenating fragments", () => {
+    expect(parsePriceToMinor("$20–$30")).toBeNull();
+    expect(parsePriceToMinor("$20-$30")).toBeNull();
+    expect(parsePriceToMinor("20 to 30")).toBeNull();
+    expect(parsePriceToMinor("$24.99 $29.99")).toBeNull();
+  });
+
+  it("rejects multi-decimal, signed, and out-of-range values", () => {
+    expect(parsePriceToMinor("24.99.5")).toBeNull();
+    expect(parsePriceToMinor("1.234")).toBeNull();
+    expect(parsePriceToMinor("-24.99")).toBeNull();
+    expect(parsePriceToMinor("0")).toBeNull();
+    expect(parsePriceToMinor("0.00")).toBeNull();
+    expect(parsePriceToMinor("1000000.00")).toBeNull();
   });
 });

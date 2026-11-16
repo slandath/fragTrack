@@ -10,8 +10,17 @@ export interface RetailerUrl {
 }
 
 export interface PriceInfo {
-  amount: string;
+  amountMinor: number;
   currency: string;
+  scrapedAt?: string | Date;
+}
+
+/** Format integer minor units as a localized currency string. */
+export function formatPrice(amountMinor: number, currency: string): string {
+  return new Intl.NumberFormat("en-US", {
+    style: "currency",
+    currency,
+  }).format(amountMinor / 100);
 }
 
 export interface HeaderProps {

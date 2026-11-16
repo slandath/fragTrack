@@ -1,7 +1,7 @@
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Trash2 } from "lucide-react";
-import type { UrlRowProps } from "./types";
+import { formatPrice, type UrlRowProps } from "./types";
 
 export default function UrlRow({ url, price, onDelete, deletePending }: UrlRowProps) {
   return (
@@ -32,9 +32,7 @@ export default function UrlRow({ url, price, onDelete, deletePending }: UrlRowPr
         </a>
       </span>
       {price ? (
-        <Badge variant="secondary">
-          {price.currency === "USD" ? "$" : price.currency} {price.amount}
-        </Badge>
+        <Badge variant="secondary">{formatPrice(price.amountMinor, price.currency)}</Badge>
       ) : (
         <span className="text-xs text-muted-foreground">&mdash;</span>
       )}

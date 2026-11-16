@@ -8,6 +8,8 @@ import { apiKey, fragrance, retailer, retailerUrl, price, user } from "../db/sch
 import { db } from "../index.js";
 import { domainConfigs } from "../scraper/configs.js";
 import { generateApiKey } from "../utils/api-key.js";
+import { CURRENCY_RE, MAX_AMOUNT_MINOR, MIN_AMOUNT_MINOR } from "../utils/money.js";
+import { canonicalizeRetailerUrl } from "../utils/retailer-url.js";
 
 const t = initTRPC.context<Context>().create();
 
@@ -35,6 +37,14 @@ const denyApiKey = t.middleware(({ ctx, next }) => {
 const scrapeProcedure = t.procedure.use(isAuthed);
 // Every other protected procedure requires a browser session.
 const sessionProcedure = t.procedure.use(denyApiKey).use(isAuthed);
+
+// Non-empty IDs, trimmed non-empty text with a documented maximum length.
+const idSchema = z.string().min(1);
+const textSchema = (max: number) =>
+  z
+    .string()
+    .transform((s) => s.trim())
+    .pipe(z.string().min(1).max(max));
 
 async function findOrCreateRetailer(url: string) {
   const hostname = new URL(url).hostname.replace(/^www\./, "");
@@ -100,7 +110,7 @@ export const appRouter = t.router({
   rotateApiKey: sessionProcedure
     .input(
       z.object({
-        id: z.string(),
+        id: idSchema,
         expiresInDays: z.number().int().min(1).max(365).default(90),
       }),
     )
@@ -132,7 +142,7 @@ export const appRouter = t.router({
       return { apiKey: result.key, id: result.id, expiresAt: result.expiresAt };
     }),
   revokeApiKey: sessionProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
       const revoked = await db
         .update(apiKey)
@@ -164,7 +174,7 @@ export const appRouter = t.router({
     return await db
       .selectDistinctOn([price.retailerUrlId], {
         retailerUrlId: price.retailerUrlId,
-        amount: price.amount,
+        amountMinor: price.amountMinor,
         currency: price.currency,
         scrapedAt: price.scrapedAt,
       })
@@ -178,7 +188,7 @@ export const appRouter = t.router({
     return Object.keys(domainConfigs);
   }),
   addFragrance: sessionProcedure
-    .input(z.object({ name: z.string().min(1), brand: z.string().min(1) }))
+    .input(z.object({ name: textSchema(100), brand: textSchema(100) }))
     .mutation(async ({ ctx, input }) => {
       const id = crypto.randomUUID();
       await db
@@ -188,27 +198,43 @@ export const appRouter = t.router({
     }),
 
   addRetailerUrl: sessionProcedure
-    .input(z.object({ fragranceId: z.string(), url: z.string().url() }))
+    .input(z.object({ fragranceId: idSchema, url: z.string() }))
     .mutation(async ({ ctx, input }) => {
       await findFragrance(input.fragranceId, ctx.user.id);
-      const hostname = new URL(input.url).hostname.replace(/^www\./, "");
-      if (!domainConfigs[hostname]) {
+      let canonical: string;
+      try {
+        canonical = canonicalizeRetailerUrl(input.url, domainConfigs);
+      } catch (error) {
+        throw new TRPCError({ code: "BAD_REQUEST", message: (error as Error).message });
+      }
+      const duplicate = await db
+        .select({ id: retailerUrl.id })
+        .from(retailerUrl)
+        .where(and(eq(retailerUrl.fragranceId, input.fragranceId), eq(retailerUrl.url, canonical)))
+        .limit(1);
+      if (duplicate[0]) {
         throw new TRPCError({
-          code: "BAD_REQUEST",
-          message: `"${hostname}" is not a supported domain`,
+          code: "CONFLICT",
+          message: "This URL is already tracked for this fragrance",
         });
       }
-      const r = await findOrCreateRetailer(input.url);
+      const r = await findOrCreateRetailer(canonical);
 
       const id = crypto.randomUUID();
       await db
         .insert(retailerUrl)
-        .values({ id, fragranceId: input.fragranceId, retailerId: r.id, url: input.url });
+        .values({ id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical });
 
-      return { id, fragranceId: input.fragranceId, retailerId: r.id, url: input.url };
+      return { id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical };
     }),
   storePrice: scrapeProcedure
-    .input(z.object({ retailerUrlId: z.string(), amount: z.string(), currency: z.string() }))
+    .input(
+      z.object({
+        retailerUrlId: idSchema,
+        amountMinor: z.number().int().min(MIN_AMOUNT_MINOR).max(MAX_AMOUNT_MINOR),
+        currency: z.string().regex(CURRENCY_RE),
+      }),
+    )
     .mutation(async ({ ctx, input }) => {
       const url = await db
         .select()
@@ -223,7 +249,7 @@ export const appRouter = t.router({
       return { id, ...input };
     }),
   deleteRetailerUrl: sessionProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
       const urlRows = await db
         .select({ retailerId: retailerUrl.retailerId })
@@ -238,7 +264,7 @@ export const appRouter = t.router({
       await cleanupOrphanedRetailer(retailerId);
     }),
   deleteFragrance: sessionProcedure
-    .input(z.object({ id: z.string() }))
+    .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
       const f = await findFragrance(input.id, ctx.user.id);
 
