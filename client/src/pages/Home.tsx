@@ -94,6 +94,14 @@ export default function Home() {
   const fragList = Object.values(fragrances);
   const deletePending = deleteFrag.isPending || deleteUrl.isPending;
   const deleteError = deleteFrag.error?.message ?? deleteUrl.error?.message ?? null;
+  const priceStatus = pricesQuery.isPending ? "loading" : pricesQuery.isError ? "error" : "success";
+  const addUrlError =
+    addRetailerUrl.error && addRetailerUrl.variables
+      ? {
+          fragranceId: addRetailerUrl.variables.fragranceId,
+          message: addRetailerUrl.error.message,
+        }
+      : null;
 
   async function handleAddFragrance(brand: string, name: string) {
     await addFragrance.mutateAsync({ name, brand });
@@ -209,7 +217,8 @@ export default function Home() {
           onRequestDeleteUrl={(id, label) => requestDelete({ kind: "url", id, label })}
           onAddUrl={handleAddUrl}
           addUrlPending={addRetailerUrl.isPending}
-          addUrlError={addRetailerUrl.error?.message ?? null}
+          addUrlError={addUrlError}
+          priceStatus={priceStatus}
           deleteFragrancePending={deleteFrag.isPending}
           deleteUrlPending={deleteUrl.isPending}
         />

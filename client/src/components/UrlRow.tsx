@@ -4,7 +4,13 @@ import { Badge } from "@/components/ui/badge";
 import { formatObservationTime, formatPrice, getPriceFreshness } from "@/lib/price";
 import type { UrlRowProps } from "./types";
 
-export default function UrlRow({ url, price, onRequestDelete, deletePending }: UrlRowProps) {
+export default function UrlRow({
+  url,
+  price,
+  priceStatus,
+  onRequestDelete,
+  deletePending,
+}: UrlRowProps) {
   let hostname = url.url;
   try {
     hostname = new URL(url.url).hostname.replace(/^www\./, "");
@@ -61,8 +67,14 @@ export default function UrlRow({ url, price, onRequestDelete, deletePending }: U
               </Badge>
             )}
           </>
-        ) : (
+        ) : priceStatus === "success" ? (
           <span className="text-xs text-muted-foreground">Never scraped</span>
+        ) : priceStatus === "loading" ? (
+          <span role="status" className="text-xs text-muted-foreground">
+            Checking price&hellip;
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Price unavailable</span>
         )}
       </div>
     </div>

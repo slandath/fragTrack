@@ -17,11 +17,16 @@ export default function FragranceCard({
   onAddUrl,
   addUrlPending,
   addUrlError,
+  priceStatus,
   deleteFragrancePending,
   deleteUrlPending,
 }: FragranceCardProps) {
   const [newUrl, setNewUrl] = useState("");
   const [urlError, setUrlError] = useState<string | null>(null);
+  const [errorDismissed, setErrorDismissed] = useState(false);
+  // Identifies the current editor session so a superseded request cannot
+  // close the editor the user is now using.
+  const editorGeneration = useRef(0);
   const inputRef = useRef<HTMLInputElement>(null);
   const addButtonRef = useRef<HTMLButtonElement>(null);
   const inputId = useId();
@@ -34,8 +39,10 @@ export default function FragranceCard({
   }, [isExpanded]);
 
   function closeForm() {
+    editorGeneration.current++;
     setNewUrl("");
     setUrlError(null);
+    setErrorDismissed(false);
     onExpand(null);
     requestAnimationFrame(() => addButtonRef.current?.focus());
   }
@@ -47,10 +54,12 @@ export default function FragranceCard({
       setUrlError("Enter a product URL.");
       return;
     }
+    const generation = editorGeneration.current;
     setUrlError(null);
+    setErrorDismissed(false);
     try {
       await onAddUrl(fragrance.id, trimmed);
-      closeForm();
+      if (generation === editorGeneration.current) closeForm();
     } catch {
       // The mutation error is displayed below; keep the input for correction.
     }
@@ -76,7 +85,10 @@ export default function FragranceCard({
             size="sm"
             aria-label={`Add retailer URL for ${fragrance.name}`}
             aria-expanded={isExpanded}
-            onClick={() => onExpand(isExpanded ? null : fragrance.id)}
+            onClick={() => {
+              if (isExpanded) closeForm();
+              else onExpand(fragrance.id);
+            }}
           >
             <Plus className="h-4 w-4" />
             <Globe className="h-4 w-4" />
@@ -101,6 +113,7 @@ export default function FragranceCard({
             key={url.id}
             url={url}
             price={latestPrices[url.id]}
+            priceStatus={priceStatus}
             onRequestDelete={onRequestDeleteUrl}
             deletePending={deleteUrlPending}
           />
@@ -116,7 +129,10 @@ export default function FragranceCard({
                 ref={inputRef}
                 type="url"
                 value={newUrl}
-                onChange={(event) => setNewUrl(event.target.value)}
+                onChange={(event) => {
+                  setNewUrl(event.target.value);
+                  setErrorDismissed(true);
+                }}
                 placeholder="https://retailer.example/product"
                 required
                 maxLength={2048}
@@ -137,9 +153,9 @@ export default function FragranceCard({
                 {urlError}
               </p>
             )}
-            {addUrlError && (
+            {addUrlError?.fragranceId === fragrance.id && !errorDismissed && (
               <p role="alert" className="break-words text-xs text-destructive">
-                Could not add URL: {addUrlError}
+                Could not add URL: {addUrlError.message}
               </p>
             )}
           </form>

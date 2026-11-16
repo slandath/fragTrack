@@ -18,22 +18,28 @@ export default function Settings() {
   const utils = trpc.useUtils();
   const keysQuery = trpc.listApiKeys.useQuery();
   const [revealedKey, setRevealedKey] = useState<string | null>(null);
+  const [revealVersion, setRevealVersion] = useState(0);
   const [copyStatus, setCopyStatus] = useState<string | null>(null);
   const [keyAction, setKeyAction] = useState<KeyAction | null>(null);
 
   // Never leave a one-time key available after leaving this page.
   useEffect(() => () => setRevealedKey(null), []);
 
+  // Drop the plaintext key from the mutation cache when this page unmounts.
   const createKey = trpc.createApiKey.useMutation({
+    gcTime: 0,
     onSuccess: (result) => {
       setRevealedKey(result.apiKey);
+      setRevealVersion((version) => version + 1);
       setCopyStatus(null);
       void utils.listApiKeys.invalidate();
     },
   });
   const rotateKey = trpc.rotateApiKey.useMutation({
+    gcTime: 0,
     onSuccess: (result) => {
       setRevealedKey(result.apiKey);
+      setRevealVersion((version) => version + 1);
       setCopyStatus(null);
       setKeyAction(null);
       void utils.listApiKeys.invalidate();
@@ -52,11 +58,14 @@ export default function Settings() {
 
   async function handleCopy() {
     if (!revealedKey) return;
+    const version = revealVersion;
     try {
       await navigator.clipboard.writeText(revealedKey);
-      setCopyStatus("Copied to clipboard.");
+      if (version === revealVersion) setCopyStatus("Copied to clipboard.");
     } catch {
-      setCopyStatus("Copy failed. Select the key and copy it manually.");
+      if (version === revealVersion) {
+        setCopyStatus("Copy failed. Select the key and copy it manually.");
+      }
     }
   }
 
@@ -124,7 +133,15 @@ export default function Settings() {
                   {copyStatus}
                 </p>
               )}
-              <Button variant="outline" size="sm" onClick={() => setRevealedKey(null)}>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => {
+                  setRevealVersion((version) => version + 1);
+                  setRevealedKey(null);
+                  setCopyStatus(null);
+                }}
+              >
                 Dismiss
               </Button>
             </div>

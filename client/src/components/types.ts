@@ -39,7 +39,8 @@ export interface FragranceCardProps {
   onRequestDeleteUrl: (id: string, label: string) => void;
   onAddUrl: (fragranceId: string, url: string) => Promise<void>;
   addUrlPending: boolean;
-  addUrlError?: string | null;
+  addUrlError?: { fragranceId: string; message: string } | null;
+  priceStatus: "loading" | "error" | "success";
   deleteFragrancePending: boolean;
   deleteUrlPending: boolean;
 }
@@ -47,6 +48,7 @@ export interface FragranceCardProps {
 export interface UrlRowProps {
   url: RetailerUrl;
   price: PriceInfo | undefined;
+  priceStatus: "loading" | "error" | "success";
   onRequestDelete: (id: string, label: string) => void;
   deletePending: boolean;
 }
