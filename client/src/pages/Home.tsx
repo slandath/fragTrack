@@ -1,144 +1,238 @@
+import { useMemo, useState } from "react";
+import { useNavigate } from "react-router-dom";
 import { authClient } from "../auth";
 import { trpc } from "@/trpc";
-import { useNavigate } from "react-router-dom";
-import { useState, useMemo } from "react";
+import { Button } from "@/components/ui/button";
 import { Separator } from "@/components/ui/separator";
 import { Skeleton } from "@/components/ui/skeleton";
 import Header from "@/components/Header";
 import AddFragranceForm from "@/components/AddFragranceForm";
 import FragranceCard from "@/components/FragranceCard";
+import ConfirmDialog from "@/components/ConfirmDialog";
 import type { RetailerUrl, PriceInfo } from "@/components/types";
 
+type DeleteTarget = { kind: "fragrance" | "url"; id: string; label: string };
+
+function QueryError({
+  label,
+  error,
+  onRetry,
+}: {
+  label: string;
+  error: unknown;
+  onRetry: () => void;
+}) {
+  const message = error instanceof Error ? error.message : "Unknown error";
+  return (
+    <div role="alert" className="space-y-2 rounded-md border border-destructive/30 p-3 text-sm">
+      <p className="break-words">
+        Could not load {label}: {message}
+      </p>
+      <Button variant="outline" size="sm" onClick={onRetry}>
+        Retry
+      </Button>
+    </div>
+  );
+}
+
 export default function Home() {
-  // Session check — redirects to /login if not authenticated
-  const { data: session, isPending } = authClient.useSession();
   const navigate = useNavigate();
+  const { data: session } = authClient.useSession();
 
-  // Fetch all fragrance rows, supported retailer domains, and latest prices
-  const { data: rows, isPending: loadingFrags, refetch } = trpc.getFragrances.useQuery();
-  const { data: supportedDomains } = trpc.getSupportedDomains.useQuery();
-  const { data: priceRows } = trpc.getLatestPrices.useQuery();
+  const fragrancesQuery = trpc.getFragrances.useQuery();
+  const domainsQuery = trpc.getSupportedDomains.useQuery();
+  const pricesQuery = trpc.getLatestPrices.useQuery();
 
-  // Mutations that refetch fragrance data on success to keep UI in sync
   const addFragrance = trpc.addFragrance.useMutation({
-    onSuccess: () => refetch(),
-    onError: (err) => console.error("addFragrance failed:", err),
+    onSuccess: () => fragrancesQuery.refetch(),
+    onError: (error) => console.error("addFragrance failed:", error),
   });
   const addRetailerUrl = trpc.addRetailerUrl.useMutation({
-    onSuccess: () => refetch(),
-    onError: (err) => console.error("addRetailerUrl failed:", err),
+    onSuccess: () => fragrancesQuery.refetch(),
+    onError: (error) => console.error("addRetailerUrl failed:", error),
   });
   const deleteUrl = trpc.deleteRetailerUrl.useMutation({
-    onSuccess: () => refetch(),
-    onError: (err) => console.error("deleteRetailerUrl failed:", err),
+    onSuccess: () => fragrancesQuery.refetch(),
+    onError: (error) => console.error("deleteRetailerUrl failed:", error),
   });
   const deleteFrag = trpc.deleteFragrance.useMutation({
-    onSuccess: () => refetch(),
-    onError: (err) => console.error("deleteFragrance failed:", err),
+    onSuccess: () => fragrancesQuery.refetch(),
+    onError: (error) => console.error("deleteFragrance failed:", error),
   });
 
-  // Tracks which fragrance card's add-URL form is open (null = none)
   const [expandedFragId, setExpandedFragId] = useState<string | null>(null);
+  const [deleteTarget, setDeleteTarget] = useState<DeleteTarget | null>(null);
+  const [signOutPending, setSignOutPending] = useState(false);
+  const [signOutError, setSignOutError] = useState<string | null>(null);
 
-  // Groups price rows by retailerUrlId, keeping only the first (latest) entry per URL
   const latestPrices = useMemo(() => {
     const map: Record<string, PriceInfo> = {};
-    for (const p of priceRows ?? []) {
-      if (!map[p.retailerUrlId]) map[p.retailerUrlId] = p;
+    for (const price of pricesQuery.data ?? []) {
+      if (!map[price.retailerUrlId]) map[price.retailerUrlId] = price;
     }
     return map;
-  }, [priceRows]);
+  }, [pricesQuery.data]);
 
-  // Groups the raw join rows into fragrance objects with their URL lists
   const fragrances = useMemo(() => {
-    if (!rows) return {};
-    const map: Record<
-      string,
-      {
-        id: string;
-        name: string;
-        brand: string;
-        urls: RetailerUrl[];
+    const map: Record<string, { id: string; name: string; brand: string; urls: RetailerUrl[] }> =
+      {};
+    for (const row of fragrancesQuery.data ?? []) {
+      const fragrance = row.fragrance;
+      if (!map[fragrance.id]) {
+        map[fragrance.id] = {
+          id: fragrance.id,
+          name: fragrance.name,
+          brand: fragrance.brand,
+          urls: [],
+        };
       }
-    > = {};
-    for (const row of rows) {
-      const f = row.fragrance;
-      if (!map[f.id]) map[f.id] = { id: f.id, name: f.name, brand: f.brand, urls: [] };
-      if (row.retailer_url) map[f.id].urls.push(row.retailer_url);
+      if (row.retailer_url) map[fragrance.id].urls.push(row.retailer_url);
     }
     return map;
-  }, [rows]);
+  }, [fragrancesQuery.data]);
 
-  // Creates a new fragrance entry from the AddFragranceForm
+  const fragList = Object.values(fragrances);
+  const deletePending = deleteFrag.isPending || deleteUrl.isPending;
+  const deleteError = deleteFrag.error?.message ?? deleteUrl.error?.message ?? null;
+  const priceStatus = pricesQuery.isPending ? "loading" : pricesQuery.isError ? "error" : "success";
+  const addUrlError =
+    addRetailerUrl.error && addRetailerUrl.variables
+      ? {
+          fragranceId: addRetailerUrl.variables.fragranceId,
+          message: addRetailerUrl.error.message,
+        }
+      : null;
+
   async function handleAddFragrance(brand: string, name: string) {
     await addFragrance.mutateAsync({ name, brand });
   }
 
-  // Adds a new retailer URL to a fragrance, then closes the add-URL form
   async function handleAddUrl(fragranceId: string, url: string) {
     await addRetailerUrl.mutateAsync({ fragranceId, url });
-    setExpandedFragId(null);
   }
 
-  // Deletes a single retailer URL (confirmation handled by UrlRow)
-  async function handleDeleteUrl(id: string) {
-    await deleteUrl.mutateAsync({ id });
+  function requestDelete(target: DeleteTarget) {
+    deleteFrag.reset();
+    deleteUrl.reset();
+    setDeleteTarget(target);
   }
 
-  // Deletes an entire fragrance and its URLs (confirmation handled by FragranceCard)
-  async function handleDeleteFragrance(id: string) {
-    await deleteFrag.mutateAsync({ id });
+  async function handleConfirmDelete() {
+    if (!deleteTarget) return;
+    try {
+      if (deleteTarget.kind === "fragrance") {
+        await deleteFrag.mutateAsync({ id: deleteTarget.id });
+      } else {
+        await deleteUrl.mutateAsync({ id: deleteTarget.id });
+      }
+      setDeleteTarget(null);
+    } catch {
+      // Mutation error is shown in the dialog; keep it open for the operator.
+    }
   }
 
-  if (isPending) return <div>Loading...</div>;
-  if (!session) {
-    navigate("/login");
-    return null;
+  async function handleSignOut() {
+    setSignOutPending(true);
+    setSignOutError(null);
+    try {
+      const result = await authClient.signOut();
+      if (result.error) throw new Error(result.error.message ?? "Sign out failed");
+      navigate("/login", { replace: true });
+    } catch (error) {
+      const message = error instanceof Error ? error.message : "Sign out failed";
+      setSignOutError(message);
+      console.error("signOut failed:", error);
+    } finally {
+      setSignOutPending(false);
+    }
   }
 
-  const fragList = Object.values(fragrances);
+  const confirmationDescription =
+    deleteTarget?.kind === "fragrance"
+      ? `Delete "${deleteTarget.label}"? Its retailer URLs and all recorded price history will also be removed. This cannot be undone.`
+      : `Delete the retailer URL for ${deleteTarget?.label ?? ""}? Its recorded price history will also be removed. This cannot be undone.`;
 
   return (
     <div className="mx-auto max-w-2xl space-y-6 p-4">
-      <Header userName={session.user?.name ?? ""} />
+      <Header
+        userName={session?.user?.name ?? ""}
+        onSignOut={handleSignOut}
+        signOutPending={signOutPending}
+        signOutError={signOutError}
+      />
 
       <AddFragranceForm
-        supportedDomains={supportedDomains ?? []}
+        supportedDomains={domainsQuery.data ?? []}
         onAdd={handleAddFragrance}
         isPending={addFragrance.isPending}
+        error={addFragrance.error?.message ?? null}
       />
+      {domainsQuery.isError && (
+        <QueryError
+          label="supported domains"
+          error={domainsQuery.error}
+          onRetry={() => void domainsQuery.refetch()}
+        />
+      )}
 
       <Separator />
 
-      {loadingFrags && (
-        <div className="space-y-3">
+      {pricesQuery.isError && (
+        <QueryError
+          label="latest prices"
+          error={pricesQuery.error}
+          onRetry={() => void pricesQuery.refetch()}
+        />
+      )}
+      {fragrancesQuery.isError && (
+        <QueryError
+          label="fragrances"
+          error={fragrancesQuery.error}
+          onRetry={() => void fragrancesQuery.refetch()}
+        />
+      )}
+
+      {fragrancesQuery.isPending && (
+        <div className="space-y-3" role="status" aria-label="Loading fragrances">
           <Skeleton className="h-20 w-full" />
           <Skeleton className="h-20 w-full" />
         </div>
       )}
 
-      {!loadingFrags && fragList.length === 0 && (
+      {fragrancesQuery.isSuccess && fragList.length === 0 && (
         <p className="text-center text-sm text-muted-foreground">
           No fragrances yet. Add one above.
         </p>
       )}
 
-      {fragList.map((frag) => (
+      {fragList.map((fragrance) => (
         <FragranceCard
-          key={frag.id}
-          fragrance={frag}
-          urls={frag.urls}
+          key={fragrance.id}
+          fragrance={fragrance}
+          urls={fragrance.urls}
           latestPrices={latestPrices}
           expandedFragranceId={expandedFragId}
           onExpand={setExpandedFragId}
-          onDeleteFragrance={handleDeleteFragrance}
-          onDeleteUrl={handleDeleteUrl}
+          onRequestDeleteFragrance={(id, label) => requestDelete({ kind: "fragrance", id, label })}
+          onRequestDeleteUrl={(id, label) => requestDelete({ kind: "url", id, label })}
           onAddUrl={handleAddUrl}
           addUrlPending={addRetailerUrl.isPending}
+          addUrlError={addUrlError}
+          priceStatus={priceStatus}
           deleteFragrancePending={deleteFrag.isPending}
           deleteUrlPending={deleteUrl.isPending}
         />
       ))}
+
+      <ConfirmDialog
+        open={Boolean(deleteTarget)}
+        title={deleteTarget?.kind === "fragrance" ? "Delete fragrance" : "Delete retailer URL"}
+        description={confirmationDescription}
+        pending={deletePending}
+        error={deleteError}
+        onConfirm={handleConfirmDelete}
+        onCancel={() => setDeleteTarget(null)}
+      />
     </div>
   );
 }

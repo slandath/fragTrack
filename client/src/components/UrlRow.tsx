@@ -1,41 +1,82 @@
+import { AlertTriangle, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Trash2 } from "lucide-react";
-import { formatPrice, type UrlRowProps } from "./types";
+import { formatObservationTime, formatPrice, getPriceFreshness } from "@/lib/price";
+import type { UrlRowProps } from "./types";
 
-export default function UrlRow({ url, price, onDelete, deletePending }: UrlRowProps) {
+export default function UrlRow({
+  url,
+  price,
+  priceStatus,
+  onRequestDelete,
+  deletePending,
+}: UrlRowProps) {
+  let hostname = url.url;
+  try {
+    hostname = new URL(url.url).hostname.replace(/^www\./, "");
+  } catch {
+    // Keep the stored value visible if it is not parseable.
+  }
+
+  const freshness = price ? getPriceFreshness(price.scrapedAt) : "never";
+  const scrapedAt = price?.scrapedAt;
+  const dateTime =
+    scrapedAt == null ? undefined : scrapedAt instanceof Date ? scrapedAt.toISOString() : scrapedAt;
+
   return (
-    <div className="flex items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
+    <div className="flex flex-wrap items-center gap-2 rounded-lg border bg-muted/30 p-2 text-sm">
       <Button
         size="sm"
         variant="outline"
-        aria-label="Delete URL"
+        aria-label={`Delete URL for ${hostname}`}
         disabled={deletePending}
-        onClick={() => {
-          if (window.confirm("Delete this URL?")) {
-            onDelete(url.id).catch(() => {
-              // Error is already logged by the onError callback on the mutation
-            });
-          }
-        }}
+        onClick={() => onRequestDelete(url.id, hostname)}
       >
         <Trash2 className="h-4 w-4" />
       </Button>
-      <span className="flex-1 font-medium">
+      <span className="min-w-0 flex-1">
         <a
           href={url.url}
           target="_blank"
           rel="noopener noreferrer"
-          className="flex-1 font-medium hover:underline"
+          className="block break-all font-medium hover:underline"
         >
-          {new URL(url.url).hostname.replace(/^www\./, "")}
+          {hostname}
         </a>
       </span>
-      {price ? (
-        <Badge variant="secondary">{formatPrice(price.amountMinor, price.currency)}</Badge>
-      ) : (
-        <span className="text-xs text-muted-foreground">&mdash;</span>
-      )}
+      <div className="flex flex-wrap items-center gap-1">
+        {price ? (
+          <>
+            <Badge
+              variant={freshness === "stale" ? "outline" : "secondary"}
+              className="whitespace-nowrap"
+            >
+              {formatPrice(price.amountMinor, price.currency)}
+            </Badge>
+            {dateTime ? (
+              <span className="text-xs text-muted-foreground">
+                <time dateTime={dateTime}>{formatObservationTime(scrapedAt!)}</time>
+              </span>
+            ) : (
+              <span className="text-xs text-muted-foreground">Observation time unknown</span>
+            )}
+            {freshness === "stale" && (
+              <Badge variant="destructive" className="whitespace-nowrap">
+                <AlertTriangle aria-hidden="true" className="h-3 w-3" />
+                Stale
+              </Badge>
+            )}
+          </>
+        ) : priceStatus === "success" ? (
+          <span className="text-xs text-muted-foreground">Never scraped</span>
+        ) : priceStatus === "loading" ? (
+          <span role="status" className="text-xs text-muted-foreground">
+            Checking price&hellip;
+          </span>
+        ) : (
+          <span className="text-xs text-muted-foreground">Price unavailable</span>
+        )}
+      </div>
     </div>
   );
 }
