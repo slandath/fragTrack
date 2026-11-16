@@ -1,5 +1,5 @@
 {
-  "id": "3360f7fb-9802-4b32-9dff-21848b547747",
+  "id": "c8f1febb-432d-480a-a551-ecdffc9a749d",
   "prevId": "2e47a3e8-cb27-42ab-9c77-e260f2933a22",
   "version": "7",
   "dialect": "postgresql",
@@ -323,6 +323,13 @@
           "type": "integer",
           "primaryKey": false,
           "notNull": true
+        },
+        "quarantined": {
+          "name": "quarantined",
+          "type": "boolean",
+          "primaryKey": false,
+          "notNull": true,
+          "default": false
         },
         "currency": {
           "name": "currency",

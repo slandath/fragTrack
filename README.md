@@ -54,8 +54,12 @@ This loads `getUserUrls` via tRPC, scrapes each URL with Playwright, and appends
 - The API accepts only exact amounts from 1 to 99,999,999 minor units (max $999,999.99). Zero and negative amounts are rejected, values with more than two decimals are rejected rather than rounded, and currency must match `^[A-Z]{3}$`.
 - Ambiguous scraper text — price ranges, multi-decimal values, signs, extra numbers — is rejected instead of concatenated into a plausible amount.
 - The dashboard formats with `Intl.NumberFormat` and sorts numerically; no `parseFloat` on text.
-- Retailer URLs must use http/https, contain no credentials, and belong to a supported domain. They are stored in canonical form (lowercased host, default ports and fragments removed; path and query preserved) and a duplicate URL for the same fragrance is rejected with a clear error.
-- Migration `0005` converts valid legacy decimal amounts to cents and aborts with a row report when a value cannot be safely converted, so ambiguous history is never silently rewritten. All changes roll back on abort.
+- Retailer URLs must use http/https, contain no credentials, and belong to a supported domain. They are stored in canonical form (lowercased host, default ports and fragments removed; path and query preserved) and a duplicate URL for the same fragrance is rejected with a clear error, enforced atomically by a unique constraint (migration `0006`).
+- Migration `0005` converts valid legacy decimal amounts to cents and aborts with a row report when a value cannot be safely converted, so ambiguous history is never silently rewritten. All changes roll back on abort. Whole-number legacy values (e.g. `2030`, possibly a collapsed price range) convert but stay quarantined and hidden from displayed prices until an operator verifies them:
+  ```sql
+  SELECT id, retailer_url_id, amount_minor FROM price WHERE quarantined;
+  UPDATE price SET quarantined = false WHERE id = '...'; -- after verification
+  ```
 
 ## Environment Variables
 

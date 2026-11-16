@@ -7,6 +7,7 @@ import {
   pgTable,
   text,
   timestamp,
+  unique,
 } from "drizzle-orm/pg-core";
 
 export const user = pgTable("user", {
@@ -132,21 +133,25 @@ export const retailer = pgTable("retailer", {
     .notNull(),
 });
 
-export const retailerUrl = pgTable("retailer_url", {
-  id: text("id").primaryKey(),
-  fragranceId: text("fragrance_id")
-    .notNull()
-    .references(() => fragrance.id, { onDelete: "cascade" }),
-  retailerId: text("retailer_id")
-    .notNull()
-    .references(() => retailer.id),
-  url: text("url").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
+export const retailerUrl = pgTable(
+  "retailer_url",
+  {
+    id: text("id").primaryKey(),
+    fragranceId: text("fragrance_id")
+      .notNull()
+      .references(() => fragrance.id, { onDelete: "cascade" }),
+    retailerId: text("retailer_id")
+      .notNull()
+      .references(() => retailer.id),
+    url: text("url").notNull(),
+    createdAt: timestamp("created_at").defaultNow().notNull(),
+    updatedAt: timestamp("updated_at")
+      .defaultNow()
+      .$onUpdate(() => new Date())
+      .notNull(),
+  },
+  (table) => [unique("retailer_url_fragrance_url_unique").on(table.fragranceId, table.url)],
+);
 
 export const price = pgTable(
   "price",
@@ -157,6 +162,10 @@ export const price = pgTable(
       .references(() => retailerUrl.id, { onDelete: "cascade" }),
     // Exact integer minor units (cents). Never floating point.
     amountMinor: integer("amount_minor").notNull(),
+    // Whole-number legacy amounts (e.g. "2030", possibly a collapsed price
+    // range) convert but stay quarantined: excluded from displayed prices
+    // until an operator verifies them. New observations are never quarantined.
+    quarantined: boolean("quarantined").notNull().default(false),
     currency: text("currency").notNull().default("USD"),
     scrapedAt: timestamp("scraped_at").defaultNow().notNull(),
   },

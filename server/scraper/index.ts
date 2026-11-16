@@ -9,15 +9,22 @@ chromium.use(StealthPlugin());
 
 const CURRENCY_WORDS = ["usd", "eur", "gbp", "cad", "aud", "jpy", "chf"];
 
-/** Parse price text to integer minor units, or null when ambiguous. */
+/**
+ * Parse price text to integer minor units, or null when ambiguous.
+ * Only US-style thousands grouping is accepted (a leading group of 1-3
+ * digits followed by groups of exactly 3); malformed groups and
+ * comma-decimal text return null instead of joining fragments.
+ */
 export function parsePriceToMinor(raw: string | null | undefined): number | null {
   if (raw == null) return null;
   let text = raw.trim().toLowerCase();
   if (!text) return null;
   for (const word of CURRENCY_WORDS) text = text.split(word).join(" ");
-  text = text.replace(/[$€£¥₹]/g, " ").replace(/,/g, "").trim().replace(/\s+/g, " ");
-  if (!/^\d+(\.\d{1,2})?$/.test(text)) return null;
-  return parseAmountToMinor(text);
+  text = text.replace(/[$€£¥₹]/g, " ").trim().replace(/\s+/g, " ");
+  if (!/^\d+(\.\d{1,2})?$/.test(text) && !/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(text)) {
+    return null;
+  }
+  return parseAmountToMinor(text.replace(/,/g, ""));
 }
 
 export async function scrapePrice(url: string) {

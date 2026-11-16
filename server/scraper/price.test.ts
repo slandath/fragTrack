@@ -8,7 +8,16 @@ describe("parsePriceToMinor", () => {
   it("parses plain and grouped dollar amounts to cents", () => {
     expect(parsePriceToMinor("$24.99")).toBe(2499);
     expect(parsePriceToMinor("$1,299.99")).toBe(129999);
+    expect(parsePriceToMinor("$12,345")).toBe(1234500);
     expect(parsePriceToMinor("24.99")).toBe(2499);
+  });
+
+  it("rejects malformed comma groups and comma decimals", () => {
+    expect(parsePriceToMinor("20,30")).toBeNull();
+    expect(parsePriceToMinor("12,34")).toBeNull();
+    expect(parsePriceToMinor("1,29,999")).toBeNull();
+    expect(parsePriceToMinor("24,99")).toBeNull();
+    expect(parsePriceToMinor("$2,499.999")).toBeNull();
   });
 
   it("handles currency-prefixed and currency-suffixed values", () => {

@@ -43,6 +43,13 @@
       "when": 1794786267369,
       "tag": "0005_price_minor_units",
       "breakpoints": true
+    },
+    {
+      "idx": 6,
+      "version": "7",
+      "when": 1794837738538,
+      "tag": "0006_retailer_url_unique",
+      "breakpoints": true
     }
   ]
 }

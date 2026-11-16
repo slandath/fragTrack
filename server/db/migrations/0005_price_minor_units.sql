@@ -1,6 +1,8 @@
 ALTER TABLE "price" ADD COLUMN "amount_minor" integer;
 --> statement-breakpoint
-UPDATE "price" SET "amount_minor" = (split_part("amount", '.', 1)::bigint * 100 + COALESCE(NULLIF(rpad(split_part("amount", '.', 2), 2, '0'), ''), '00')::integer) WHERE "amount" ~ '^\d{1,6}(\.\d{1,2})?$';
+ALTER TABLE "price" ADD COLUMN "quarantined" boolean DEFAULT false;
+--> statement-breakpoint
+UPDATE "price" SET "amount_minor" = (split_part("amount", '.', 1)::bigint * 100 + COALESCE(NULLIF(rpad(split_part("amount", '.', 2), 2, '0'), ''), '00')::integer), "quarantined" = ("amount" NOT LIKE '%.%') WHERE "amount" ~ '^\d{1,6}(\.\d{1,2})?$';
 --> statement-breakpoint
 DO $$
 DECLARE
@@ -22,6 +24,8 @@ BEGIN
 END $$;
 --> statement-breakpoint
 ALTER TABLE "price" ALTER COLUMN "amount_minor" SET NOT NULL;
+--> statement-breakpoint
+ALTER TABLE "price" ALTER COLUMN "quarantined" SET NOT NULL;
 --> statement-breakpoint
 ALTER TABLE "price" ADD CONSTRAINT "price_amount_minor_range" CHECK("price"."amount_minor" > 0 AND "price"."amount_minor" <= 99999999);
 --> statement-breakpoint

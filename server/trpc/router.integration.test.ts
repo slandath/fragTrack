@@ -314,6 +314,46 @@ describe("price writes (numeric contract)", () => {
       db.insert(price).values({ id: `price-bad2-${runId}`, retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" }),
     ).rejects.toThrow();
   });
+
+  it("excludes quarantined legacy prices from display", async () => {
+    const caller = sessionCaller(ids.userA);
+    await caller.storePrice({ retailerUrlId: ids.urlA, amountMinor: 7777, currency: "USD" });
+    await db.insert(price).values({
+      id: `price-quarantined-${runId}`,
+      retailerUrlId: ids.urlA,
+      amountMinor: 203000,
+      currency: "USD",
+      quarantined: true,
+    });
+    const latest = await caller.getLatestPrices();
+    const forUrl = latest.filter((p) => p.retailerUrlId === ids.urlA);
+    expect(forUrl.length).toBe(1);
+    expect(forUrl[0].amountMinor).toBe(7777);
+  });
+
+  it("rejects duplicate retailer URLs at the database level", async () => {
+    const dupeUrl = "https://fragrancex.com/db-dupe-check";
+    await db.insert(retailerUrl).values({
+      id: `ru-dupe1-${runId}`,
+      fragranceId: ids.fragA,
+      retailerId: ids.retailerId,
+      url: dupeUrl,
+    });
+    try {
+      await expect(
+        db.insert(retailerUrl).values({
+          id: `ru-dupe2-${runId}`,
+          fragranceId: ids.fragA,
+          retailerId: ids.retailerId,
+          url: dupeUrl,
+        }),
+      ).rejects.toThrow();
+    } finally {
+      await db.delete(retailerUrl).where(
+        inArray(retailerUrl.id, [`ru-dupe1-${runId}`, `ru-dupe2-${runId}`]),
+      );
+    }
+  });
 });
 
 describe("fragrance and retailer-URL validation", () => {

@@ -15,11 +15,18 @@ export interface PriceInfo {
   scrapedAt?: string | Date;
 }
 
-/** Format integer minor units as a localized currency string. */
+/**
+ * Format integer minor units as a localized currency string.
+ * Fraction digits are fixed at two so the display always matches the
+ * fixed-hundredths storage contract, even for zero-decimal currencies
+ * such as JPY.
+ */
 export function formatPrice(amountMinor: number, currency: string): string {
   return new Intl.NumberFormat("en-US", {
     style: "currency",
     currency,
+    minimumFractionDigits: 2,
+    maximumFractionDigits: 2,
   }).format(amountMinor / 100);
 }
 
