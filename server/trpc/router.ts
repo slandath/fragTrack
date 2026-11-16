@@ -1,7 +1,7 @@
 import { initTRPC } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import type { Context } from "./context.js";
 import { apiKey, fragrance, retailer, retailerUrl, price, user } from "../db/schema.js";
@@ -51,14 +51,18 @@ const sessionProcedure = t.procedure.use(denyApiKey).use(isAuthed);
 // Non-empty IDs, trimmed non-empty text with a documented maximum length.
 const idSchema = z.string().min(1);
 
-/** True for PostgreSQL unique-violation errors (SQLSTATE 23505). */
+/**
+ * True for PostgreSQL unique-violation errors (SQLSTATE 23505). Drizzle
+ * wraps driver errors in DrizzleQueryError with the original error in
+ * `cause`, so walk the chain instead of reading `code` off the wrapper.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code: unknown }).code === "23505"
-  );
+  let current: unknown = error;
+  while (typeof current === "object" && current !== null) {
+    if ("code" in current && (current as { code: unknown }).code === "23505") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 const textSchema = (max: number) =>
   z
@@ -85,7 +89,24 @@ async function findOrCreateRetailer(tx: DbTransaction, url: string) {
   return existing[0];
 }
 
+/**
+ * Serialize retailer-lifetime changes across concurrent transactions. Two
+ * transactions deleting a retailer's final URLs must not interleave their
+ * orphan checks: under Read Committed each would still see the other's
+ * uncommitted row and both would skip retailer deletion, leaving an orphan
+ * (and an add racing a delete could fail its foreign-key check). The lock is
+ * held until the calling transaction commits or rolls back. Re-requesting a
+ * held key in the same transaction succeeds immediately. Multi-retailer
+ * callers must pass IDs in a consistent order; sorting here provides it.
+ */
+async function lockRetailers(tx: DbTransaction, retailerIds: string[]) {
+  for (const id of [...retailerIds].sort()) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${id}))`);
+  }
+}
+
 async function cleanupOrphanedRetailer(tx: DbTransaction, retailerId: string) {
+  await lockRetailers(tx, [retailerId]);
   const remaining = await tx
     .select({ id: retailerUrl.id })
     .from(retailerUrl)
@@ -235,9 +256,11 @@ export const appRouter = t.router({
       }
 
       // Ownership check, retailer resolution, and URL insert share one
-      // transaction. A failed URL insert rolls back retailer creation, and a
-      // concurrent orphan cleanup cannot observe the retailer before the URL
-      // exists (it is uncommitted until this transaction commits).
+      // transaction. A failed URL insert rolls back retailer creation. The
+      // retailer lock serializes against concurrent orphan cleanups: without
+      // it a cleanup could commit after this transaction resolves an existing
+      // retailer but before it inserts the URL, failing the foreign-key
+      // check. Re-verify after locking in case that exact race already won.
       return await db.transaction(async (tx) => {
         await findFragrance(tx, input.fragranceId, ctx.user.id);
 
@@ -255,7 +278,14 @@ export const appRouter = t.router({
           });
         }
 
-        const r = await findOrCreateRetailer(tx, canonical);
+        let r = await findOrCreateRetailer(tx, canonical);
+        await lockRetailers(tx, [r.id]);
+        const stillThere = await tx
+          .select({ id: retailer.id })
+          .from(retailer)
+          .where(eq(retailer.id, r.id))
+          .limit(1);
+        if (!stillThere[0]) r = await findOrCreateRetailer(tx, canonical);
         const id = crypto.randomUUID();
         try {
           await tx
@@ -309,6 +339,9 @@ export const appRouter = t.router({
           .limit(1);
         if (!urlRows[0]) throw new TRPCError({ code: "NOT_FOUND" });
 
+        // Lock before deleting: a concurrent deleter of the retailer's last
+        // other URL must serialize its orphan check after this delete.
+        await lockRetailers(tx, [urlRows[0].retailerId]);
         await tx.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
         await cleanupOrphanedRetailer(tx, urlRows[0].retailerId);
       });
@@ -328,6 +361,9 @@ export const appRouter = t.router({
         // products), so clean it up once.
         const retailerIds = [...new Set(urls.map((u) => u.retailerId))];
 
+        // Lock before deleting (sorted inside lockRetailers, so concurrent
+        // multi-retailer deletions take locks in the same order).
+        await lockRetailers(tx, retailerIds);
         await tx.delete(fragrance).where(eq(fragrance.id, f.id));
 
         for (const id of retailerIds) {

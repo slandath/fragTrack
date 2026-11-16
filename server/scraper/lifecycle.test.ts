@@ -102,15 +102,25 @@ describe("scraper browser lifecycle", () => {
     expect(fake.calls.browserClose).toBe(1);
   });
 
-  it("classifies selector timeouts instead of swallowing them", async () => {
+  it("classifies an absent price element as price_not_found", async () => {
     const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
     const fake = fakeLauncher({ selectorError: timeout });
     const scraper = await createScraper({ launch: fake.launch });
 
     expect(await scraper.scrape(URL)).toEqual({
-      category: "selector_timeout",
+      category: "price_not_found",
       detail: expect.any(String),
     });
+    expect(fake.calls.pageClose).toBe(1);
+    expect(fake.calls.contextClose).toBe(1);
+    await scraper.close();
+  });
+
+  it("keeps selector_timeout for non-timeout selector failures", async () => {
+    const fake = fakeLauncher({ selectorError: new Error("strict mode violation") });
+    const scraper = await createScraper({ launch: fake.launch });
+
+    expect(await scraper.scrape(URL)).toMatchObject({ category: "selector_timeout" });
     expect(fake.calls.pageClose).toBe(1);
     expect(fake.calls.contextClose).toBe(1);
     await scraper.close();
@@ -127,7 +137,7 @@ describe("scraper browser lifecycle", () => {
     await scraper.close();
   });
 
-  it("does not retry a deterministic selector timeout", async () => {
+  it("does not retry a deterministic missing price element", async () => {
     const timeout = Object.assign(new Error("timed out"), { name: "TimeoutError" });
     const fake = fakeLauncher({ selectorError: timeout });
     const scraper = await createScraper({ launch: fake.launch, retries: 2, retryDelayMs: 0 });

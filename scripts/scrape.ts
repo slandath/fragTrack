@@ -64,11 +64,19 @@ const trpcEnvelopeSchema = z.object({
 });
 
 /** Parse and validate a tRPC envelope; distinguish transport, HTTP, and tRPC failures. */
-async function readTrpcResponse(res: Response, path: string): Promise<unknown> {
+export async function readTrpcResponse(res: Response, path: string): Promise<unknown> {
   let json: unknown;
+  let isJson = true;
   try {
     json = await res.json();
   } catch {
+    isJson = false;
+  }
+  if (!isJson) {
+    // A non-JSON body on a failed request (e.g. an HTML 502 page) is an
+    // HTTP failure; only a malformed body on a 2xx response is an envelope
+    // problem. This preserves res.status for operator logs.
+    if (!res.ok) throw new ApiError("http", `${path}: HTTP ${res.status}`);
     throw new ApiError("invalid_response", `${path}: response body was not JSON`);
   }
 
@@ -173,12 +181,19 @@ async function main() {
     for (let i = 0; i < urls.length; i++) {
       const { retailer_url, fragrance } = urls[i];
       const domain = domainOf(retailer_url.url);
-      process.stdout.write(`[${i + 1}/${urls.length}] ${fragrance.brand} - ${fragrance.name}... `);
+      // The bracketed id identifies the target when several URLs share a
+      // fragrance and retailer; failure lines repeat it (Spec 04).
+      process.stdout.write(
+        `[${i + 1}/${urls.length}] ${fragrance.brand} - ${fragrance.name} [${retailer_url.id}]... `,
+      );
 
       const outcome = await scraper.scrape(retailer_url.url);
       if (outcome.category !== "ok") {
         record(outcome.category, domain);
-        console.log(outcome.detail ? `${outcome.category} (${outcome.detail})` : outcome.category);
+        const logged = outcome.detail
+          ? `${outcome.category} (${outcome.detail})`
+          : outcome.category;
+        console.log(`${logged} [${retailer_url.id}]`);
       } else {
         try {
           // storePrice is intentionally not retried: a retry after an

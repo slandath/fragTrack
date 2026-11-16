@@ -166,10 +166,13 @@ export async function createScraper(options: ScraperOptions = {}): Promise<Scrap
       try {
         element = await page.waitForSelector(selector, { timeout: selectorTimeoutMs });
       } catch (error) {
+        // A selector wait that times out means the page has no matching
+        // price element (Spec 04). Other selector-wait failures indicate
+        // broken selector machinery rather than a missing price.
         if (isTimeoutError(error)) {
-          return { category: "selector_timeout", detail: selector };
+          return { category: "price_not_found", detail: selector };
         }
-        throw error;
+        return { category: "selector_timeout", detail: (error as Error).message };
       }
       if (!element) return { category: "selector_timeout", detail: selector };
 

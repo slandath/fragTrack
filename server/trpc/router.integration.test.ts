@@ -462,7 +462,13 @@ describe("atomic retailer operations", () => {
         caller.addRetailerUrl({ fragranceId: ids.fragA, url }),
       ]);
       expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
-      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+      const rejected = results.filter((r) => r.status === "rejected");
+      expect(rejected).toHaveLength(1);
+      // The unique-constraint violation surfaces as CONFLICT even though
+      // Drizzle wraps the driver error (the SQLSTATE lives on `cause`).
+      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
+        code: "CONFLICT",
+      });
       const rows = await db.select().from(retailerUrl).where(eq(retailerUrl.url, url));
       expect(rows).toHaveLength(1);
       const retailers = await db.select().from(retailer).where(eq(retailer.name, "fragrancex.com"));
@@ -470,6 +476,35 @@ describe("atomic retailer operations", () => {
     } finally {
       await db.delete(retailerUrl).where(eq(retailerUrl.url, url));
       await db.delete(retailer).where(eq(retailer.name, "fragrancex.com"));
+    }
+  });
+
+  it("does not orphan a retailer when its final URLs are deleted concurrently", async () => {
+    const caller = sessionCaller(ids.userA);
+    const created = await caller.addFragrance({ name: `Orphan race ${runId}`, brand: "X" });
+    const first = await caller.addRetailerUrl({
+      fragranceId: created.id,
+      url: `https://fragrancex.com/orphan-${runId}-1`,
+    });
+    const second = await caller.addRetailerUrl({
+      fragranceId: created.id,
+      url: `https://fragrancex.com/orphan-${runId}-2`,
+    });
+    expect(first.retailerId).toBe(second.retailerId);
+    const retailerId = first.retailerId;
+    try {
+      // Without per-retailer serialization both transactions can observe the
+      // other's uncommitted delete and skip retailer cleanup.
+      await Promise.all([
+        caller.deleteRetailerUrl({ id: first.id }),
+        caller.deleteRetailerUrl({ id: second.id }),
+      ]);
+      const rows = await db.select().from(retailer).where(eq(retailer.id, retailerId));
+      expect(rows).toHaveLength(0);
+    } finally {
+      await db.delete(retailerUrl).where(inArray(retailerUrl.id, [first.id, second.id]));
+      await db.delete(fragrance).where(eq(fragrance.id, created.id));
+      await db.delete(retailer).where(eq(retailer.id, retailerId));
     }
   });
 

@@ -35,7 +35,9 @@ export function canonicalizeRetailerUrl(
     throw new Error("URL must not contain credentials");
   }
   const host = url.hostname.replace(/^www\./, "");
-  if (!supportedDomains[host]) {
+  // Own-property check: inherited Object.prototype names (e.g.
+  // "constructor") must not pass as configured retailers.
+  if (!Object.hasOwn(supportedDomains, host)) {
     throw new Error(`"${host}" is not a supported domain`);
   }
   if (
