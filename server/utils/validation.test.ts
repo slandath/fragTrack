@@ -95,6 +95,12 @@ describe("canonicalizeRetailerUrl", () => {
     expect(() => canonicalizeRetailerUrl("https://shop.fragrancex.com/p", domains)).toThrow(
       /not a supported domain/,
     );
+    expect(() => canonicalizeRetailerUrl("https://constructor/p", domains)).toThrow(
+      /not a supported domain/,
+    );
+    expect(() => canonicalizeRetailerUrl("https://toString/p", domains)).toThrow(
+      /not a supported domain/,
+    );
     expect(() => canonicalizeRetailerUrl("not a url", domains)).toThrow(/valid URL/);
     expect(() => canonicalizeRetailerUrl("", domains)).toThrow(/empty/);
     expect(() => canonicalizeRetailerUrl("   ", domains)).toThrow(/empty/);

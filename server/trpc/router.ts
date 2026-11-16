@@ -1,7 +1,7 @@
 import { initTRPC } from "@trpc/server";
 import { TRPCError } from "@trpc/server";
 import { z } from "zod";
-import { eq, and, desc, isNull } from "drizzle-orm";
+import { eq, and, desc, isNull, sql } from "drizzle-orm";
 import crypto from "node:crypto";
 import type { Context } from "./context.js";
 import { apiKey, fragrance, retailer, retailerUrl, price, user } from "../db/schema.js";
@@ -11,11 +11,18 @@ import { generateApiKey } from "../utils/api-key.js";
 import { CURRENCY_RE, MAX_AMOUNT_MINOR, MIN_AMOUNT_MINOR } from "../utils/money.js";
 import { canonicalizeRetailerUrl } from "../utils/retailer-url.js";
 
+/** A Drizzle transaction handle (same query surface as the global db). */
+type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
+
 const t = initTRPC.context<Context>().create();
 
 const isAuthed = t.middleware(async ({ ctx, next }) => {
   if (!ctx.session?.user) throw new TRPCError({ code: "UNAUTHORIZED" });
-  const currentUsers = await db.select().from(user).where(eq(user.id, ctx.session.user.id)).limit(1);
+  const currentUsers = await db
+    .select()
+    .from(user)
+    .where(eq(user.id, ctx.session.user.id))
+    .limit(1);
   const currentUser = currentUsers[0];
   if (!currentUser) throw new TRPCError({ code: "UNAUTHORIZED" });
   if (currentUser.banned && (!currentUser.banExpires || currentUser.banExpires > new Date())) {
@@ -28,7 +35,10 @@ const isAuthed = t.middleware(async ({ ctx, next }) => {
 // rejected before any database access on procedures outside that scope.
 const denyApiKey = t.middleware(({ ctx, next }) => {
   if (ctx.authType === "api-key") {
-    throw new TRPCError({ code: "FORBIDDEN", message: "API keys are limited to scrape operations" });
+    throw new TRPCError({
+      code: "FORBIDDEN",
+      message: "API keys are limited to scrape operations",
+    });
   }
   return next();
 });
@@ -41,14 +51,18 @@ const sessionProcedure = t.procedure.use(denyApiKey).use(isAuthed);
 // Non-empty IDs, trimmed non-empty text with a documented maximum length.
 const idSchema = z.string().min(1);
 
-/** True for PostgreSQL unique-violation errors (SQLSTATE 23505). */
+/**
+ * True for PostgreSQL unique-violation errors (SQLSTATE 23505). Drizzle
+ * wraps driver errors in DrizzleQueryError with the original error in
+ * `cause`, so walk the chain instead of reading `code` off the wrapper.
+ */
 function isUniqueViolation(error: unknown): boolean {
-  return (
-    typeof error === "object" &&
-    error !== null &&
-    "code" in error &&
-    (error as { code: unknown }).code === "23505"
-  );
+  let current: unknown = error;
+  while (typeof current === "object" && current !== null) {
+    if ("code" in current && (current as { code: unknown }).code === "23505") return true;
+    current = (current as { cause?: unknown }).cause;
+  }
+  return false;
 }
 const textSchema = (max: number) =>
   z
@@ -56,28 +70,55 @@ const textSchema = (max: number) =>
     .transform((s) => s.trim())
     .pipe(z.string().min(1).max(max));
 
-async function findOrCreateRetailer(url: string) {
+/**
+ * Atomic upsert: ON CONFLICT DO NOTHING plus a fallback select means two
+ * concurrent creators of the same domain both receive the same retailer row
+ * instead of one failing with a 23505 unique violation.
+ */
+async function findOrCreateRetailer(tx: DbTransaction, url: string) {
   const hostname = new URL(url).hostname.replace(/^www\./, "");
-  const existing = await db.select().from(retailer).where(eq(retailer.name, hostname)).limit(1);
-  if (existing[0]) return existing[0];
-  const id = crypto.randomUUID();
-  await db.insert(retailer).values({ id, name: hostname, url: hostname });
-  return { id, name: hostname, url: hostname };
+  const inserted = await tx
+    .insert(retailer)
+    .values({ id: crypto.randomUUID(), name: hostname, url: hostname })
+    .onConflictDoNothing({ target: retailer.name })
+    .returning();
+  if (inserted[0]) return inserted[0];
+
+  const existing = await tx.select().from(retailer).where(eq(retailer.name, hostname)).limit(1);
+  if (!existing[0]) throw new Error("Failed to resolve retailer after upsert");
+  return existing[0];
 }
 
-async function cleanupOrphanedRetailer(retailerId: string) {
-  const remaining = await db
+/**
+ * Serialize retailer-lifetime changes across concurrent transactions. Two
+ * transactions deleting a retailer's final URLs must not interleave their
+ * orphan checks: under Read Committed each would still see the other's
+ * uncommitted row and both would skip retailer deletion, leaving an orphan
+ * (and an add racing a delete could fail its foreign-key check). The lock is
+ * held until the calling transaction commits or rolls back. Re-requesting a
+ * held key in the same transaction succeeds immediately. Multi-retailer
+ * callers must pass IDs in a consistent order; sorting here provides it.
+ */
+async function lockRetailers(tx: DbTransaction, retailerIds: string[]) {
+  for (const id of [...retailerIds].sort()) {
+    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${id}))`);
+  }
+}
+
+async function cleanupOrphanedRetailer(tx: DbTransaction, retailerId: string) {
+  await lockRetailers(tx, [retailerId]);
+  const remaining = await tx
     .select({ id: retailerUrl.id })
     .from(retailerUrl)
     .where(eq(retailerUrl.retailerId, retailerId))
     .limit(1);
   if (!remaining[0]) {
-    await db.delete(retailer).where(eq(retailer.id, retailerId));
+    await tx.delete(retailer).where(eq(retailer.id, retailerId));
   }
 }
 
-async function findFragrance(id: string, userId: string) {
-  const results = await db
+async function findFragrance(tx: DbTransaction, id: string, userId: string) {
+  const results = await tx
     .select()
     .from(fragrance)
     .where(and(eq(fragrance.id, id), eq(fragrance.userId, userId)))
@@ -131,11 +172,7 @@ export const appRouter = t.router({
           .update(apiKey)
           .set({ revokedAt: new Date() })
           .where(
-            and(
-              eq(apiKey.id, input.id),
-              eq(apiKey.userId, ctx.user.id),
-              isNull(apiKey.revokedAt),
-            ),
+            and(eq(apiKey.id, input.id), eq(apiKey.userId, ctx.user.id), isNull(apiKey.revokedAt)),
           )
           .returning({ id: apiKey.id });
         if (!revoked[0]) return null;
@@ -161,7 +198,8 @@ export const appRouter = t.router({
           and(eq(apiKey.id, input.id), eq(apiKey.userId, ctx.user.id), isNull(apiKey.revokedAt)),
         )
         .returning({ id: apiKey.id });
-      if (!revoked[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Active API key not found" });
+      if (!revoked[0])
+        throw new TRPCError({ code: "NOT_FOUND", message: "Active API key not found" });
       return { id: revoked[0].id };
     }),
 
@@ -210,44 +248,63 @@ export const appRouter = t.router({
   addRetailerUrl: sessionProcedure
     .input(z.object({ fragranceId: idSchema, url: z.string() }))
     .mutation(async ({ ctx, input }) => {
-      await findFragrance(input.fragranceId, ctx.user.id);
       let canonical: string;
       try {
         canonical = canonicalizeRetailerUrl(input.url, domainConfigs);
       } catch (error) {
         throw new TRPCError({ code: "BAD_REQUEST", message: (error as Error).message });
       }
-      const duplicate = await db
-        .select({ id: retailerUrl.id })
-        .from(retailerUrl)
-        .where(and(eq(retailerUrl.fragranceId, input.fragranceId), eq(retailerUrl.url, canonical)))
-        .limit(1);
-      if (duplicate[0]) {
-        throw new TRPCError({
-          code: "CONFLICT",
-          message: "This URL is already tracked for this fragrance",
-        });
-      }
-      const r = await findOrCreateRetailer(canonical);
 
-      const id = crypto.randomUUID();
-      try {
-        await db
-          .insert(retailerUrl)
-          .values({ id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical });
-      } catch (error) {
-        // The unique (fragranceId, url) constraint is the atomic duplicate
-        // guard; the SELECT above is only an early, friendlier check.
-        if (isUniqueViolation(error)) {
+      // Ownership check, retailer resolution, and URL insert share one
+      // transaction. A failed URL insert rolls back retailer creation. The
+      // retailer lock serializes against concurrent orphan cleanups: without
+      // it a cleanup could commit after this transaction resolves an existing
+      // retailer but before it inserts the URL, failing the foreign-key
+      // check. Re-verify after locking in case that exact race already won.
+      return await db.transaction(async (tx) => {
+        await findFragrance(tx, input.fragranceId, ctx.user.id);
+
+        const duplicate = await tx
+          .select({ id: retailerUrl.id })
+          .from(retailerUrl)
+          .where(
+            and(eq(retailerUrl.fragranceId, input.fragranceId), eq(retailerUrl.url, canonical)),
+          )
+          .limit(1);
+        if (duplicate[0]) {
           throw new TRPCError({
             code: "CONFLICT",
             message: "This URL is already tracked for this fragrance",
           });
         }
-        throw error;
-      }
 
-      return { id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical };
+        let r = await findOrCreateRetailer(tx, canonical);
+        await lockRetailers(tx, [r.id]);
+        const stillThere = await tx
+          .select({ id: retailer.id })
+          .from(retailer)
+          .where(eq(retailer.id, r.id))
+          .limit(1);
+        if (!stillThere[0]) r = await findOrCreateRetailer(tx, canonical);
+        const id = crypto.randomUUID();
+        try {
+          await tx
+            .insert(retailerUrl)
+            .values({ id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical });
+        } catch (error) {
+          // The unique (fragranceId, url) constraint is the atomic duplicate
+          // guard; the SELECT above is only an early, friendlier check.
+          if (isUniqueViolation(error)) {
+            throw new TRPCError({
+              code: "CONFLICT",
+              message: "This URL is already tracked for this fragrance",
+            });
+          }
+          throw error;
+        }
+
+        return { id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical };
+      });
     }),
   storePrice: scrapeProcedure
     .input(
@@ -273,37 +330,47 @@ export const appRouter = t.router({
   deleteRetailerUrl: sessionProcedure
     .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
-      const urlRows = await db
-        .select({ retailerId: retailerUrl.retailerId })
-        .from(retailerUrl)
-        .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
-        .where(and(eq(retailerUrl.id, input.id), eq(fragrance.userId, ctx.user.id)))
-        .limit(1);
-      if (!urlRows[0]) throw new TRPCError({ code: "NOT_FOUND" });
+      await db.transaction(async (tx) => {
+        const urlRows = await tx
+          .select({ retailerId: retailerUrl.retailerId })
+          .from(retailerUrl)
+          .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
+          .where(and(eq(retailerUrl.id, input.id), eq(fragrance.userId, ctx.user.id)))
+          .limit(1);
+        if (!urlRows[0]) throw new TRPCError({ code: "NOT_FOUND" });
 
-      const { retailerId } = urlRows[0];
-      await db.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
-      await cleanupOrphanedRetailer(retailerId);
+        // Lock before deleting: a concurrent deleter of the retailer's last
+        // other URL must serialize its orphan check after this delete.
+        await lockRetailers(tx, [urlRows[0].retailerId]);
+        await tx.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
+        await cleanupOrphanedRetailer(tx, urlRows[0].retailerId);
+      });
     }),
   deleteFragrance: sessionProcedure
     .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
-      const f = await findFragrance(input.id, ctx.user.id);
+      await db.transaction(async (tx) => {
+        const f = await findFragrance(tx, input.id, ctx.user.id);
 
-      const urls = await db
-        .select({ retailerId: retailerUrl.retailerId })
-        .from(retailerUrl)
-        .where(eq(retailerUrl.fragranceId, f.id));
+        const urls = await tx
+          .select({ retailerId: retailerUrl.retailerId })
+          .from(retailerUrl)
+          .where(eq(retailerUrl.fragranceId, f.id));
 
-      const retailerIds = urls.map((u) => u.retailerId);
+        // A retailer can own several URLs on the same fragrance (different
+        // products), so clean it up once.
+        const retailerIds = [...new Set(urls.map((u) => u.retailerId))];
 
-      await db.delete(fragrance).where(eq(fragrance.id, input.id));
+        // Lock before deleting (sorted inside lockRetailers, so concurrent
+        // multi-retailer deletions take locks in the same order).
+        await lockRetailers(tx, retailerIds);
+        await tx.delete(fragrance).where(eq(fragrance.id, f.id));
 
-      for (const id of retailerIds) {
-        await cleanupOrphanedRetailer(id);
-      }
+        for (const id of retailerIds) {
+          await cleanupOrphanedRetailer(tx, id);
+        }
+      });
     }),
-
 });
 
 export type AppRouter = typeof appRouter;
