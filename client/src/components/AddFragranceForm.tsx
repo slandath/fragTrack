@@ -5,7 +5,11 @@ import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import type { AddFragranceFormProps } from "./types";
 
-export default function AddFragranceForm({ supportedDomains, onAdd, isPending }: AddFragranceFormProps) {
+export default function AddFragranceForm({
+  supportedDomains,
+  onAdd,
+  isPending,
+}: AddFragranceFormProps) {
   const [name, setName] = useState("");
   const [brand, setBrand] = useState("");
 
@@ -28,7 +32,9 @@ export default function AddFragranceForm({ supportedDomains, onAdd, isPending }:
         <div className="flex gap-2">
           <Input value={brand} onChange={(e) => setBrand(e.target.value)} placeholder="Brand" />
           <Input value={name} onChange={(e) => setName(e.target.value)} placeholder="Name" />
-          <Button onClick={handleSubmit} disabled={isPending}>Track</Button>
+          <Button onClick={handleSubmit} disabled={isPending}>
+            Track
+          </Button>
         </div>
         {supportedDomains.length > 0 && (
           <div className="flex flex-wrap items-center gap-1 pt-6">

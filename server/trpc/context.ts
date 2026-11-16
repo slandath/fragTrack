@@ -20,11 +20,7 @@ export const createContext = async ({ req }: CreateFastifyContextOptions) => {
         .from(apiKey)
         .innerJoin(user, eq(apiKey.userId, user.id))
         .where(
-          and(
-            eq(apiKey.id, parsed.id),
-            isNull(apiKey.revokedAt),
-            gt(apiKey.expiresAt, new Date()),
-          ),
+          and(eq(apiKey.id, parsed.id), isNull(apiKey.revokedAt), gt(apiKey.expiresAt, new Date())),
         )
         .limit(1);
       const row = rows[0];

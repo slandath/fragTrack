@@ -66,9 +66,7 @@ export default function FragranceCard({
         </CardAction>
       </CardHeader>
       <CardContent className="space-y-2">
-        {urls.length === 0 && (
-          <p className="text-sm text-muted-foreground">No URLs tracked yet.</p>
-        )}
+        {urls.length === 0 && <p className="text-sm text-muted-foreground">No URLs tracked yet.</p>}
         {sortedUrls.map((url) => (
           <UrlRow
             key={url.id}
