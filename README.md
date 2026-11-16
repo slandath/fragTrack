@@ -114,10 +114,10 @@ CI runs `pnpm check`, `pnpm build`, applies all migrations to a disposable Postg
 3. `pnpm db:migrate` — the only supported production schema path.
 4. `pnpm build`
 5. `pnpm start` (`NODE_ENV=production` enables serving `client/dist`)
-6. Smoke test:
+6. Smoke test (the server defaults to port 3000 when `PORT` is unset; substitute your configured port if it differs):
    ```bash
-   curl -fsS http://localhost:$PORT/trpc/healthcheck   # {"result":...}
-   curl -fsSI http://localhost:$PORT/                  # built index.html
+   curl -fsS http://localhost:${PORT:-3000}/trpc/healthcheck   # {"result":...}
+   curl -fsSI http://localhost:${PORT:-3000}/                  # built index.html
    ```
 7. If the smoke test fails, redeploy the previous release. Migrations must stay compatible with a running or rollback release — keep them additive (no table/column removal or rename) until older releases are retired.
 
