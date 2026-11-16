@@ -2,17 +2,29 @@ import { chromium as playwrightChromium } from "playwright";
 import { addExtra } from "playwright-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { domainConfigs } from "./configs.js";
+import { parseAmountToMinor } from "../utils/money.js";
 
 const chromium = addExtra(playwrightChromium);
 chromium.use(StealthPlugin());
 
-// Pure price-text cleanup shared by the scraper. The current contract strips
-// everything except digits and decimal points and requires at least one
-// digit, so non-price text never becomes a "." price. Ranges, ambiguous
-// values, and multi-decimal handling are defined by Spec 04.
-export function parsePriceText(raw: string | null | undefined): string | null {
-  const cleaned = raw?.trim().replace(/[^0-9.]/g, "") ?? "";
-  return /[0-9]/.test(cleaned) ? cleaned : null;
+const CURRENCY_WORDS = ["usd", "eur", "gbp", "cad", "aud", "jpy", "chf"];
+
+/**
+ * Parse price text to integer minor units, or null when ambiguous.
+ * Only US-style thousands grouping is accepted (a leading group of 1-3
+ * digits followed by groups of exactly 3); malformed groups and
+ * comma-decimal text return null instead of joining fragments.
+ */
+export function parsePriceToMinor(raw: string | null | undefined): number | null {
+  if (raw == null) return null;
+  let text = raw.trim().toLowerCase();
+  if (!text) return null;
+  for (const word of CURRENCY_WORDS) text = text.split(word).join(" ");
+  text = text.replace(/[$€£¥₹]/g, " ").trim().replace(/\s+/g, " ");
+  if (!/^\d+(\.\d{1,2})?$/.test(text) && !/^\d{1,3}(,\d{3})+(\.\d{1,2})?$/.test(text)) {
+    return null;
+  }
+  return parseAmountToMinor(text.replace(/,/g, ""));
 }
 
 export async function scrapePrice(url: string) {
@@ -32,24 +44,24 @@ export async function scrapePrice(url: string) {
     await page.goto(url, { waitUntil: "load" });
     const hostname = new URL(url).hostname.replace(/^www\./, "");
     const config = domainConfigs[hostname];
-    let amount: string | null = null;
+    let amountMinor: number | null = null;
     let currency: string | null = null;
 
     if (config) {
       await page.waitForSelector(config.selectors.price, { timeout: 10000 }).catch(() => {});
       const el = await page.$(config.selectors.price);
       if (el) {
-        const raw = parsePriceText(await el.textContent());
-        if (raw) {
-          amount = raw;
+        const minor = parsePriceToMinor(await el.textContent());
+        if (minor !== null) {
+          amountMinor = minor;
           currency = config.selectors.currency ?? "USD";
         }
       }
     }
     await browser.close();
-    return { amount, currency };
+    return { amountMinor, currency };
   } catch (error) {
     console.error("Scrape failed:", error);
-    return { amount: null, currency: null };
+    return { amountMinor: null, currency: null };
   }
 }

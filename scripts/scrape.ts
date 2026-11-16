@@ -77,14 +77,14 @@ async function main() {
 
     try {
       const price = await scrapePrice(retailer_url.url);
-      if (price.amount) {
+      if (price.amountMinor !== null) {
         await trpcMutate("storePrice", {
           retailerUrlId: retailer_url.id,
-          amount: price.amount,
+          amountMinor: price.amountMinor,
           currency: price.currency ?? "USD",
         });
         stored++;
-        console.log(`$${price.amount}`);
+        console.log(`$${(price.amountMinor / 100).toFixed(2)}`);
       } else {
         failed++;
         console.log("No price found");

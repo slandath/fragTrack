@@ -35,8 +35,8 @@ export default function FragranceCard({
   const sortedUrls = [...urls].sort((a, b) => {
     const pa = latestPrices[a.id];
     const pb = latestPrices[b.id];
-    const aPrice = pa ? parseFloat(pa.amount) : Infinity;
-    const bPrice = pb ? parseFloat(pb.amount) : Infinity;
+    const aPrice = pa ? pa.amountMinor : Infinity;
+    const bPrice = pb ? pb.amountMinor : Infinity;
     return aPrice - bPrice;
   });
 

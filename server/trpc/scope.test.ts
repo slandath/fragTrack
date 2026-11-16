@@ -53,7 +53,7 @@ describe("API-key authorization scope", () => {
   it("denies unauthenticated access to protected procedures", async () => {
     await expect(anonCaller.getUserUrls()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(
-      anonCaller.storePrice({ retailerUrlId: "url-1", amount: "10.00", currency: "USD" }),
+      anonCaller.storePrice({ retailerUrlId: "url-1", amountMinor: 1000, currency: "USD" }),
     ).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
 
