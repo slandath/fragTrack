@@ -150,7 +150,14 @@ export const retailerUrl = pgTable(
       .$onUpdate(() => new Date())
       .notNull(),
   },
-  (table) => [unique("retailer_url_fragrance_url_unique").on(table.fragranceId, table.url)],
+  (table) => [
+    unique("retailer_url_fragrance_url_unique").on(table.fragranceId, table.url),
+    // The unique index already covers fragrance_id as its leftmost prefix;
+    // this explicit index is kept for FK/lookup clarity and to support
+    // selective cleanup queries without scanning the wider unique index.
+    index("retailer_url_fragrance_id_idx").on(table.fragranceId),
+    index("retailer_url_retailer_id_idx").on(table.retailerId),
+  ],
 );
 
 export const price = pgTable(
@@ -171,7 +178,10 @@ export const price = pgTable(
   },
   (table) => [
     index("price_retailer_url_scraped_at_idx").on(table.retailerUrlId, table.scrapedAt.desc()),
-    check("price_amount_minor_range", sql`${table.amountMinor} > 0 AND ${table.amountMinor} <= 99999999`),
+    check(
+      "price_amount_minor_range",
+      sql`${table.amountMinor} > 0 AND ${table.amountMinor} <= 99999999`,
+    ),
     check("price_currency_code", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );

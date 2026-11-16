@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { parsePriceToMinor } from "./index.js";
+import { parsePriceToMinor, resolvePriceOutcome } from "./index.js";
 
 // Fixture tests for the scraper price-text helper. No network access.
 // Anything ambiguous (ranges, extra numbers, multi-decimal values) is
@@ -48,5 +48,28 @@ describe("parsePriceToMinor", () => {
     expect(parsePriceToMinor("0")).toBeNull();
     expect(parsePriceToMinor("0.00")).toBeNull();
     expect(parsePriceToMinor("1000000.00")).toBeNull();
+  });
+});
+
+describe("resolvePriceOutcome (fixture-based extraction contract)", () => {
+  it("returns ok with the configured currency for a valid price", () => {
+    expect(resolvePriceOutcome(" $24.99 ", "USD")).toEqual({
+      category: "ok",
+      amountMinor: 2499,
+      currency: "USD",
+    });
+    expect(resolvePriceOutcome("€19.50", "EUR")).toMatchObject({ currency: "EUR" });
+  });
+
+  it("classifies empty text as price_not_found, not ambiguous_price", () => {
+    expect(resolvePriceOutcome(null, "USD")).toEqual({ category: "price_not_found" });
+    expect(resolvePriceOutcome("", "USD")).toEqual({ category: "price_not_found" });
+    expect(resolvePriceOutcome("   ", "USD")).toEqual({ category: "price_not_found" });
+  });
+
+  it("classifies unparseable text as ambiguous_price", () => {
+    for (const raw of ["out of stock", "$20–$30", "24.99.5", "1,29,999"]) {
+      expect(resolvePriceOutcome(raw, "USD")).toMatchObject({ category: "ambiguous_price" });
+    }
   });
 });

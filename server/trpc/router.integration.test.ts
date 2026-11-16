@@ -16,7 +16,9 @@ import type { Context } from "./context.js";
 
 const TEST_DATABASE_URL = process.env.TEST_DATABASE_URL;
 if (!TEST_DATABASE_URL) {
-  throw new Error("TEST_DATABASE_URL is required for integration tests (see vitest.integration.config.ts)");
+  throw new Error(
+    "TEST_DATABASE_URL is required for integration tests (see vitest.integration.config.ts)",
+  );
 }
 process.env.DATABASE_URL = TEST_DATABASE_URL;
 process.env.NODE_ENV = "test";
@@ -43,7 +45,11 @@ function sessionCaller(userId: string) {
   } as unknown as Context);
 }
 
-const anonCaller = appRouter.createCaller({ db, session: null, authType: "none" } as unknown as Context);
+const anonCaller = appRouter.createCaller({
+  db,
+  session: null,
+  authType: "none",
+} as unknown as Context);
 
 const runId = crypto.randomUUID().slice(0, 8);
 const ids = {
@@ -78,16 +84,34 @@ async function seed() {
     { id: ids.fragB, name: "Blanc", brand: "House B", userId: ids.userB },
   ]);
   await db.insert(retailer).values({ id: ids.retailerId, name: ids.retailer, url: ids.retailer });
-  await db
-    .insert(retailerUrl)
-    .values([
-      { id: ids.urlA, fragranceId: ids.fragA, retailerId: ids.retailerId, url: "https://fragrancex.com/a" },
-      { id: ids.urlB, fragranceId: ids.fragB, retailerId: ids.retailerId, url: "https://fragrancex.com/b" },
-    ]);
+  await db.insert(retailerUrl).values([
+    {
+      id: ids.urlA,
+      fragranceId: ids.fragA,
+      retailerId: ids.retailerId,
+      url: "https://fragrancex.com/a",
+    },
+    {
+      id: ids.urlB,
+      fragranceId: ids.fragB,
+      retailerId: ids.retailerId,
+      url: "https://fragrancex.com/b",
+    },
+  ]);
   const past = new Date(Date.now() - 24 * 60 * 60 * 1000);
   await db.insert(apiKey).values([
-    { id: keys.valid.id, userId: ids.userA, secretHash: keys.valid.secretHash, expiresAt: keys.valid.expiresAt },
-    { id: keys.expired.id, userId: ids.userA, secretHash: keys.expired.secretHash, expiresAt: past },
+    {
+      id: keys.valid.id,
+      userId: ids.userA,
+      secretHash: keys.valid.secretHash,
+      expiresAt: keys.valid.expiresAt,
+    },
+    {
+      id: keys.expired.id,
+      userId: ids.userA,
+      secretHash: keys.expired.secretHash,
+      expiresAt: past,
+    },
     {
       id: keys.revoked.id,
       userId: ids.userA,
@@ -273,7 +297,9 @@ describe("API-key scope and lifecycle", () => {
     // A present-but-unparseable header fails closed without falling through
     // to cookie sessions.
     const bearerOnly = appRouter.createCaller(
-      await createContext({ req: { headers: { authorization: "Bearer" } } } as unknown as CallerOptions),
+      await createContext({
+        req: { headers: { authorization: "Bearer" } },
+      } as unknown as CallerOptions),
     );
     await expect(bearerOnly.getUserUrls()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
   });
@@ -308,10 +334,20 @@ describe("price writes (numeric contract)", () => {
 
   it("enforces the numeric guards at the database level", async () => {
     await expect(
-      db.insert(price).values({ id: `price-bad-${runId}`, retailerUrlId: ids.urlA, amountMinor: 0, currency: "USD" }),
+      db.insert(price).values({
+        id: `price-bad-${runId}`,
+        retailerUrlId: ids.urlA,
+        amountMinor: 0,
+        currency: "USD",
+      }),
     ).rejects.toThrow();
     await expect(
-      db.insert(price).values({ id: `price-bad2-${runId}`, retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" }),
+      db.insert(price).values({
+        id: `price-bad2-${runId}`,
+        retailerUrlId: ids.urlA,
+        amountMinor: 1000,
+        currency: "usd",
+      }),
     ).rejects.toThrow();
   });
 
@@ -349,9 +385,9 @@ describe("price writes (numeric contract)", () => {
         }),
       ).rejects.toThrow();
     } finally {
-      await db.delete(retailerUrl).where(
-        inArray(retailerUrl.id, [`ru-dupe1-${runId}`, `ru-dupe2-${runId}`]),
-      );
+      await db
+        .delete(retailerUrl)
+        .where(inArray(retailerUrl.id, [`ru-dupe1-${runId}`, `ru-dupe2-${runId}`]));
     }
   });
 });
@@ -394,5 +430,62 @@ describe("fragrance and retailer-URL validation", () => {
       }),
     ).rejects.toMatchObject({ code: "CONFLICT" });
     await caller.deleteRetailerUrl({ id: first.id });
+  });
+});
+
+describe("atomic retailer operations", () => {
+  it("resolves one retailer for concurrent adds to the same domain", async () => {
+    const caller = sessionCaller(ids.userA);
+    const urls = [
+      `https://fragrancex.com/concurrent-${runId}-a`,
+      `https://fragrancex.com/concurrent-${runId}-b`,
+    ];
+    try {
+      const created = await Promise.all(
+        urls.map((url) => caller.addRetailerUrl({ fragranceId: ids.fragA, url })),
+      );
+      expect(created[0].retailerId).toBe(created[1].retailerId);
+      const rows = await db.select().from(retailer).where(eq(retailer.name, "fragrancex.com"));
+      expect(rows).toHaveLength(1);
+    } finally {
+      await db.delete(retailerUrl).where(inArray(retailerUrl.url, urls));
+      await db.delete(retailer).where(eq(retailer.name, "fragrancex.com"));
+    }
+  });
+
+  it("rolls back retailer creation when a concurrent duplicate URL insert fails", async () => {
+    const caller = sessionCaller(ids.userA);
+    const url = `https://fragrancex.com/rollback-${runId}`;
+    try {
+      const results = await Promise.allSettled([
+        caller.addRetailerUrl({ fragranceId: ids.fragA, url }),
+        caller.addRetailerUrl({ fragranceId: ids.fragA, url }),
+      ]);
+      expect(results.filter((r) => r.status === "fulfilled")).toHaveLength(1);
+      expect(results.filter((r) => r.status === "rejected")).toHaveLength(1);
+      const rows = await db.select().from(retailerUrl).where(eq(retailerUrl.url, url));
+      expect(rows).toHaveLength(1);
+      const retailers = await db.select().from(retailer).where(eq(retailer.name, "fragrancex.com"));
+      expect(retailers).toHaveLength(1);
+    } finally {
+      await db.delete(retailerUrl).where(eq(retailerUrl.url, url));
+      await db.delete(retailer).where(eq(retailer.name, "fragrancex.com"));
+    }
+  });
+
+  it("cleans up a shared retailer once when deleting a fragrance", async () => {
+    const caller = sessionCaller(ids.userA);
+    const created = await caller.addFragrance({ name: `Shared ${runId}`, brand: "X" });
+    const urls = [
+      `https://fragrancex.com/shared-${runId}-1`,
+      `https://fragrancex.com/shared-${runId}-2`,
+    ];
+    const first = await caller.addRetailerUrl({ fragranceId: created.id, url: urls[0] });
+    const second = await caller.addRetailerUrl({ fragranceId: created.id, url: urls[1] });
+    expect(first.retailerId).toBe(second.retailerId);
+
+    await caller.deleteFragrance({ id: created.id });
+    const rows = await db.select().from(retailer).where(eq(retailer.id, first.retailerId));
+    expect(rows).toHaveLength(0);
   });
 });
