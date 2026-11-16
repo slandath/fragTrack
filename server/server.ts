@@ -1,4 +1,6 @@
 import "dotenv/config";
+// Validate after dotenv loads .env, before modules that read configuration.
+import { env } from "./env.js";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { auth } from "./utils/auth.js";
@@ -13,7 +15,7 @@ const fastify = Fastify({
   logger: true,
 });
 
-if (process.env.NODE_ENV === "production") {
+if (env.nodeEnv === "production") {
   const __dirname = path.dirname(fileURLToPath(import.meta.url));
   const clientDist = path.resolve(__dirname, "../client/dist");
   await fastify.register(fastifyStatic, { root: clientDist });
@@ -45,7 +47,7 @@ fastify.route({
 
 const start = async () => {
   try {
-    await fastify.listen({ port: Number(process.env.PORT) || 3000, host: "0.0.0.0" });
+    await fastify.listen({ port: env.port, host: "0.0.0.0" });
   } catch (err) {
     fastify.log.error(err);
     process.exit(1);

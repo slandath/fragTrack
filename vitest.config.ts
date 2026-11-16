@@ -9,6 +9,7 @@ export default defineConfig({
     // database. Provide a dummy URL so importing the server DB module does
     // not throw at import time; no connection is opened until a query runs.
     env: {
+      NODE_ENV: "test",
       DATABASE_URL: "postgresql://test:test@localhost:5432/test",
     },
   },

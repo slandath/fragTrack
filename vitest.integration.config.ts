@@ -12,6 +12,9 @@ export default defineConfig({
     include: ["server/**/*.integration.test.ts"],
     exclude: ["node_modules/**", "client/**"],
     environment: "node",
+    env: {
+      NODE_ENV: "test",
+    },
     testTimeout: 30_000,
     hookTimeout: 60_000,
     pool: "forks",

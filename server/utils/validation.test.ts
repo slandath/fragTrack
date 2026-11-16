@@ -1,9 +1,5 @@
 import { describe, expect, it } from "vitest";
-import {
-  MAX_AMOUNT_MINOR,
-  isSupportedCurrency,
-  parseAmountToMinor,
-} from "./money.js";
+import { MAX_AMOUNT_MINOR, isSupportedCurrency, parseAmountToMinor } from "./money.js";
 import { canonicalizeRetailerUrl } from "./retailer-url.js";
 
 const domains = { "fragrancex.com": {}, "example.com": {} };
@@ -105,8 +101,8 @@ describe("canonicalizeRetailerUrl", () => {
     expect(() => canonicalizeRetailerUrl("", domains)).toThrow(/empty/);
     expect(() => canonicalizeRetailerUrl("   ", domains)).toThrow(/empty/);
     expect(() => canonicalizeRetailerUrl(null, domains)).toThrow();
-    expect(() => canonicalizeRetailerUrl(`https://fragrancex.com/${"p".repeat(2048)}`, domains)).toThrow(
-      /at most 2048/,
-    );
+    expect(() =>
+      canonicalizeRetailerUrl(`https://fragrancex.com/${"p".repeat(2048)}`, domains),
+    ).toThrow(/at most 2048/);
   });
 });

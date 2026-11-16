@@ -111,12 +111,8 @@
           "name": "account_user_id_user_id_fk",
           "tableFrom": "account",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -197,12 +193,8 @@
           "name": "api_key_user_id_user_id_fk",
           "tableFrom": "api_key",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -212,9 +204,7 @@
         "api_key_secret_hash_unique": {
           "name": "api_key_secret_hash_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "secret_hash"
-          ]
+          "columns": ["secret_hash"]
         }
       },
       "policies": {},
@@ -286,12 +276,8 @@
           "name": "fragrance_user_id_user_id_fk",
           "tableFrom": "fragrance",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -367,12 +353,8 @@
           "name": "price_retailer_url_id_retailer_url_id_fk",
           "tableFrom": "price",
           "tableTo": "retailer_url",
-          "columnsFrom": [
-            "retailer_url_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["retailer_url_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -427,9 +409,7 @@
         "retailer_name_unique": {
           "name": "retailer_name_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "name"
-          ]
+          "columns": ["name"]
         }
       },
       "policies": {},
@@ -485,12 +465,8 @@
           "name": "retailer_url_fragrance_id_fragrance_id_fk",
           "tableFrom": "retailer_url",
           "tableTo": "fragrance",
-          "columnsFrom": [
-            "fragrance_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["fragrance_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         },
@@ -498,12 +474,8 @@
           "name": "retailer_url_retailer_id_retailer_id_fk",
           "tableFrom": "retailer_url",
           "tableTo": "retailer",
-          "columnsFrom": [
-            "retailer_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["retailer_id"],
+          "columnsTo": ["id"],
           "onDelete": "no action",
           "onUpdate": "no action"
         }
@@ -591,12 +563,8 @@
           "name": "session_user_id_user_id_fk",
           "tableFrom": "session",
           "tableTo": "user",
-          "columnsFrom": [
-            "user_id"
-          ],
-          "columnsTo": [
-            "id"
-          ],
+          "columnsFrom": ["user_id"],
+          "columnsTo": ["id"],
           "onDelete": "cascade",
           "onUpdate": "no action"
         }
@@ -606,9 +574,7 @@
         "session_token_unique": {
           "name": "session_token_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "token"
-          ]
+          "columns": ["token"]
         }
       },
       "policies": {},
@@ -698,9 +664,7 @@
         "user_email_unique": {
           "name": "user_email_unique",
           "nullsNotDistinct": false,
-          "columns": [
-            "email"
-          ]
+          "columns": ["email"]
         }
       },
       "policies": {},

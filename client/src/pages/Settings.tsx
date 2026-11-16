@@ -71,7 +71,10 @@ export default function Settings() {
               const expired = new Date(String(key.expiresAt)).getTime() <= Date.now();
               const active = !key.revokedAt && !expired;
               return (
-                <div key={key.id} className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <div
+                  key={key.id}
+                  className="flex items-center justify-between gap-4 rounded-md border p-3"
+                >
                   <div className="min-w-0 text-sm">
                     <p className="font-mono">ft_{key.id}_...</p>
                     <p className="text-muted-foreground">
