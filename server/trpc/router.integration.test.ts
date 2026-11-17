@@ -2,7 +2,7 @@ import { beforeAll, afterAll, describe, expect, it } from "vitest";
 import { eq, inArray } from "drizzle-orm";
 import { migrate } from "drizzle-orm/node-postgres/migrator";
 import crypto from "node:crypto";
-import { apiKey, fragrance, price, retailer, retailerUrl, user } from "../db/schema.js";
+import { apiKey, fragrance, price, retailerUrl, user } from "../db/schema.js";
 import { generateApiKey } from "../utils/api-key.js";
 import type { Context } from "./context.js";
 
@@ -58,8 +58,7 @@ const ids = {
   banned: `user-banned-${runId}`,
   fragA: `frag-a-${runId}`,
   fragB: `frag-b-${runId}`,
-  retailer: `test-retailer-${runId}.com`,
-  retailerId: `ret-${runId}`,
+  retailerDomain: "fragrancex.com",
   urlA: `url-a-${runId}`,
   urlB: `url-b-${runId}`,
 };
@@ -83,18 +82,17 @@ async function seed() {
     { id: ids.fragA, name: "Noir", brand: "House A", userId: ids.userA },
     { id: ids.fragB, name: "Blanc", brand: "House B", userId: ids.userB },
   ]);
-  await db.insert(retailer).values({ id: ids.retailerId, name: ids.retailer, url: ids.retailer });
   await db.insert(retailerUrl).values([
     {
       id: ids.urlA,
       fragranceId: ids.fragA,
-      retailerId: ids.retailerId,
+      retailerDomain: ids.retailerDomain,
       url: "https://fragrancex.com/a",
     },
     {
       id: ids.urlB,
       fragranceId: ids.fragB,
-      retailerId: ids.retailerId,
+      retailerDomain: ids.retailerDomain,
       url: "https://fragrancex.com/b",
     },
   ]);
@@ -146,7 +144,6 @@ async function cleanup() {
   await db.delete(fragrance).where(inArray(fragrance.id, [ids.fragA, ids.fragB]));
   await db.delete(apiKey).where(inArray(apiKey.id, keyIds));
   await db.delete(user).where(inArray(user.id, [ids.userA, ids.userB, ids.banned]));
-  await db.delete(retailer).where(eq(retailer.id, ids.retailerId));
 }
 
 beforeAll(async () => {
@@ -372,7 +369,7 @@ describe("price writes (numeric contract)", () => {
     await db.insert(retailerUrl).values({
       id: `ru-dupe1-${runId}`,
       fragranceId: ids.fragA,
-      retailerId: ids.retailerId,
+      retailerDomain: ids.retailerDomain,
       url: dupeUrl,
     });
     try {
@@ -380,7 +377,7 @@ describe("price writes (numeric contract)", () => {
         db.insert(retailerUrl).values({
           id: `ru-dupe2-${runId}`,
           fragranceId: ids.fragA,
-          retailerId: ids.retailerId,
+          retailerDomain: ids.retailerDomain,
           url: dupeUrl,
         }),
       ).rejects.toThrow();
@@ -433,27 +430,31 @@ describe("fragrance and retailer-URL validation", () => {
   });
 });
 
-describe("atomic retailer operations", () => {
-  it("resolves one retailer for concurrent adds to the same domain", async () => {
+describe("retailer domain model", () => {
+  it("stores the www-stripped domain derived from the canonical URL", async () => {
     const caller = sessionCaller(ids.userA);
-    const urls = [
-      `https://fragrancex.com/concurrent-${runId}-a`,
-      `https://fragrancex.com/concurrent-${runId}-b`,
-    ];
-    try {
-      const created = await Promise.all(
-        urls.map((url) => caller.addRetailerUrl({ fragranceId: ids.fragA, url })),
-      );
-      expect(created[0].retailerId).toBe(created[1].retailerId);
-      const rows = await db.select().from(retailer).where(eq(retailer.name, "fragrancex.com"));
-      expect(rows).toHaveLength(1);
-    } finally {
-      await db.delete(retailerUrl).where(inArray(retailerUrl.url, urls));
-      await db.delete(retailer).where(eq(retailer.name, "fragrancex.com"));
-    }
+    const created = await caller.addRetailerUrl({
+      fragranceId: ids.fragA,
+      url: `https://www.fragrancex.com:443/domain-${runId}#frag`,
+    });
+    expect(created.retailerDomain).toBe("fragrancex.com");
+    expect(created.url).toBe(`https://www.fragrancex.com/domain-${runId}`);
+    const rows = await db.select().from(retailerUrl).where(eq(retailerUrl.id, created.id));
+    expect(rows[0].retailerDomain).toBe("fragrancex.com");
+    await caller.deleteRetailerUrl({ id: created.id });
   });
 
-  it("rolls back retailer creation when a concurrent duplicate URL insert fails", async () => {
+  it("derives the domain from the hostname, not an '@' in the query string", async () => {
+    const caller = sessionCaller(ids.userA);
+    const created = await caller.addRetailerUrl({
+      fragranceId: ids.fragA,
+      url: `https://fragrancex.com/domain-at-${runId}?ref=user@example.com`,
+    });
+    expect(created.retailerDomain).toBe("fragrancex.com");
+    await caller.deleteRetailerUrl({ id: created.id });
+  });
+
+  it("keeps duplicate URL inserts atomic under the unique constraint", async () => {
     const caller = sessionCaller(ids.userA);
     const url = `https://fragrancex.com/rollback-${runId}`;
     try {
@@ -466,61 +467,50 @@ describe("atomic retailer operations", () => {
       expect(rejected).toHaveLength(1);
       // The unique-constraint violation surfaces as CONFLICT even though
       // Drizzle wraps the driver error (the SQLSTATE lives on `cause`).
-      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({
-        code: "CONFLICT",
-      });
+      expect((rejected[0] as PromiseRejectedResult).reason).toMatchObject({ code: "CONFLICT" });
       const rows = await db.select().from(retailerUrl).where(eq(retailerUrl.url, url));
       expect(rows).toHaveLength(1);
-      const retailers = await db.select().from(retailer).where(eq(retailer.name, "fragrancex.com"));
-      expect(retailers).toHaveLength(1);
+      expect(rows[0].retailerDomain).toBe(ids.retailerDomain);
     } finally {
       await db.delete(retailerUrl).where(eq(retailerUrl.url, url));
-      await db.delete(retailer).where(eq(retailer.name, "fragrancex.com"));
     }
   });
 
-  it("does not orphan a retailer when its final URLs are deleted concurrently", async () => {
-    const caller = sessionCaller(ids.userA);
-    const created = await caller.addFragrance({ name: `Orphan race ${runId}`, brand: "X" });
-    const first = await caller.addRetailerUrl({
-      fragranceId: created.id,
-      url: `https://fragrancex.com/orphan-${runId}-1`,
+  it("preserves URL ownership and price links in migrated data", async () => {
+    // Migration 0008 only rewrites the retailer relationship; fragrance IDs
+    // and price -> URL links must be untouched. These seeded rows exercise
+    // that contract with two different users and URLs.
+    const rows = await db
+      .select()
+      .from(retailerUrl)
+      .where(inArray(retailerUrl.id, [ids.urlA, ids.urlB]));
+    expect(rows).toHaveLength(2);
+    expect(rows.every((r) => r.retailerDomain === ids.retailerDomain)).toBe(true);
+    const byId = new Map(rows.map((r) => [r.id, r]));
+    expect(byId.get(ids.urlA)?.fragranceId).toBe(ids.fragA);
+    expect(byId.get(ids.urlB)?.fragranceId).toBe(ids.fragB);
+
+    await sessionCaller(ids.userA).storePrice({
+      retailerUrlId: ids.urlA,
+      amountMinor: 4321,
+      currency: "USD",
     });
-    const second = await caller.addRetailerUrl({
-      fragranceId: created.id,
-      url: `https://fragrancex.com/orphan-${runId}-2`,
-    });
-    expect(first.retailerId).toBe(second.retailerId);
-    const retailerId = first.retailerId;
-    try {
-      // Without per-retailer serialization both transactions can observe the
-      // other's uncommitted delete and skip retailer cleanup.
-      await Promise.all([
-        caller.deleteRetailerUrl({ id: first.id }),
-        caller.deleteRetailerUrl({ id: second.id }),
-      ]);
-      const rows = await db.select().from(retailer).where(eq(retailer.id, retailerId));
-      expect(rows).toHaveLength(0);
-    } finally {
-      await db.delete(retailerUrl).where(inArray(retailerUrl.id, [first.id, second.id]));
-      await db.delete(fragrance).where(eq(fragrance.id, created.id));
-      await db.delete(retailer).where(eq(retailer.id, retailerId));
-    }
+    const prices = await db.select().from(price).where(eq(price.retailerUrlId, ids.urlA));
+    expect(prices.length).toBeGreaterThan(0);
+    expect(prices.every((p) => p.retailerUrlId === ids.urlA)).toBe(true);
   });
 
-  it("cleans up a shared retailer once when deleting a fragrance", async () => {
+  it("deletes a fragrance and its URLs and prices without retailer cleanup", async () => {
     const caller = sessionCaller(ids.userA);
-    const created = await caller.addFragrance({ name: `Shared ${runId}`, brand: "X" });
-    const urls = [
-      `https://fragrancex.com/shared-${runId}-1`,
-      `https://fragrancex.com/shared-${runId}-2`,
-    ];
-    const first = await caller.addRetailerUrl({ fragranceId: created.id, url: urls[0] });
-    const second = await caller.addRetailerUrl({ fragranceId: created.id, url: urls[1] });
-    expect(first.retailerId).toBe(second.retailerId);
+    const created = await caller.addFragrance({ name: `Cascade ${runId}`, brand: "X" });
+    const url = await caller.addRetailerUrl({
+      fragranceId: created.id,
+      url: `https://fragrancex.com/cascade-${runId}`,
+    });
+    await caller.storePrice({ retailerUrlId: url.id, amountMinor: 1000, currency: "USD" });
 
     await caller.deleteFragrance({ id: created.id });
-    const rows = await db.select().from(retailer).where(eq(retailer.id, first.retailerId));
-    expect(rows).toHaveLength(0);
+    expect(await db.select().from(retailerUrl).where(eq(retailerUrl.id, url.id))).toHaveLength(0);
+    expect(await db.select().from(price).where(eq(price.retailerUrlId, url.id))).toHaveLength(0);
   });
 });

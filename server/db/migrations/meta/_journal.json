@@ -57,6 +57,13 @@
       "when": 1794845434712,
       "tag": "0007_massive_amazoness",
       "breakpoints": true
+    },
+    {
+      "idx": 8,
+      "version": "7",
+      "when": 1794914660725,
+      "tag": "0008_simplify_retailer_model",
+      "breakpoints": true
     }
   ]
 }

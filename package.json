@@ -22,7 +22,6 @@
     "check": "pnpm format:check && pnpm lint && pnpm --filter client lint && pnpm typecheck && pnpm --filter client typecheck && pnpm test"
   },
   "dependencies": {
-    "@fastify/cors": "^11.3.0",
     "@fastify/static": "^10.1.2",
     "@trpc/client": "^11.18.0",
     "@trpc/server": "^11.18.0",

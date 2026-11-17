@@ -1,6 +1,7 @@
 import { config } from "dotenv";
-import { z } from "zod";
+import { createTRPCClient, httpLink, TRPCClientError } from "@trpc/client";
 import { createScraper, type ScrapeCategory } from "../server/scraper/index.js";
+import type { AppRouter, RouterOutputs } from "../server/trpc/router.js";
 
 config();
 
@@ -36,7 +37,7 @@ function validateApiUrl(value: string) {
 
 const validatedApiUrl = validateApiUrl(API_URL);
 
-type ApiErrorKind = "network" | "http" | "trpc" | "invalid_response";
+type ApiErrorKind = "network" | "http" | "trpc";
 
 class ApiError extends Error {
   constructor(
@@ -48,84 +49,52 @@ class ApiError extends Error {
   }
 }
 
+// The typed client decodes tRPC envelopes for us. We only translate its
+// errors into operator-facing messages that distinguish HTTP, tRPC, and
+// transport failures.
+function toApiError(error: unknown, path: string): ApiError {
+  if (error instanceof TRPCClientError) {
+    // tRPC parses the body before checking the response status, so a gateway
+    // HTML error page never reaches `data.httpStatus`. The custom fetch below
+    // throws an ApiError with the status first; recover it from the cause.
+    if (error.cause instanceof ApiError) {
+      return new ApiError(error.cause.kind, `${path}: ${error.cause.message}`);
+    }
+    const status = error.data?.httpStatus;
+    const code = error.data?.code ? ` (${error.data.code})` : "";
+    if (typeof status === "number") {
+      return new ApiError("http", `${path}: HTTP ${status}${code}: ${error.message}`);
+    }
+    return new ApiError("trpc", `${path}: ${error.message}${code}`);
+  }
+  return new ApiError(
+    "network",
+    `${path}: ${error instanceof Error ? error.message : String(error)}`,
+  );
+}
+
 function formatError(error: unknown): string {
   if (error instanceof ApiError) return `${error.kind}: ${error.message}`;
   return error instanceof Error ? error.message : String(error);
 }
 
-const trpcEnvelopeSchema = z.object({
-  error: z
-    .object({
-      message: z.string().optional(),
-      data: z.object({ code: z.string().optional() }).optional(),
-    })
-    .optional(),
-  result: z.object({ data: z.unknown() }).optional(),
+const trpc = createTRPCClient<AppRouter>({
+  links: [
+    httpLink({
+      url: `${validatedApiUrl}/trpc`,
+      headers: () => ({ Authorization: `Bearer ${API_KEY}` }),
+      // Capture HTTP failures with non-JSON bodies (e.g. an HTML 502 page)
+      // before tRPC tries to parse them, so the status reaches toApiError.
+      fetch: async (url, init) => {
+        const res = await fetch(url, init);
+        if (!res.ok && !(res.headers.get("content-type") ?? "").includes("application/json")) {
+          throw new ApiError("http", `HTTP ${res.status}`);
+        }
+        return res;
+      },
+    }),
+  ],
 });
-
-/** Parse and validate a tRPC envelope; distinguish transport, HTTP, and tRPC failures. */
-export async function readTrpcResponse(res: Response, path: string): Promise<unknown> {
-  let json: unknown;
-  let isJson = true;
-  try {
-    json = await res.json();
-  } catch {
-    isJson = false;
-  }
-  if (!isJson) {
-    // A non-JSON body on a failed request (e.g. an HTML 502 page) is an
-    // HTTP failure; only a malformed body on a 2xx response is an envelope
-    // problem. This preserves res.status for operator logs.
-    if (!res.ok) throw new ApiError("http", `${path}: HTTP ${res.status}`);
-    throw new ApiError("invalid_response", `${path}: response body was not JSON`);
-  }
-
-  const parsed = trpcEnvelopeSchema.safeParse(Array.isArray(json) ? json[0] : json);
-  if (!parsed.success) {
-    throw new ApiError("invalid_response", `${path}: unexpected tRPC envelope`);
-  }
-  const payload = parsed.data;
-  if (payload.error) {
-    const code = payload.error.data?.code ? ` (${payload.error.data.code})` : "";
-    throw new ApiError("trpc", `${path}: ${payload.error.message ?? "tRPC error"}${code}`);
-  }
-  if (!res.ok) throw new ApiError("http", `${path}: HTTP ${res.status}`);
-  if (!payload.result) throw new ApiError("invalid_response", `${path}: missing result`);
-  return payload.result.data;
-}
-
-async function request(path: string, init?: RequestInit): Promise<unknown> {
-  try {
-    const res = await fetch(`${validatedApiUrl}/trpc/${path}`, {
-      ...init,
-      headers: { Authorization: `Bearer ${API_KEY}`, ...init?.headers },
-    });
-    return await readTrpcResponse(res, path);
-  } catch (error) {
-    if (error instanceof ApiError) throw error;
-    throw new ApiError("network", `${path}: ${(error as Error).message}`);
-  }
-}
-
-function trpcQuery(path: string) {
-  return request(path);
-}
-
-function trpcMutate(path: string, input: Record<string, unknown>) {
-  return request(path, {
-    method: "POST",
-    headers: { "Content-Type": "application/json" },
-    body: JSON.stringify(input),
-  });
-}
-
-const userUrlsSchema = z.array(
-  z.object({
-    retailer_url: z.object({ id: z.string().min(1), url: z.string().min(1) }),
-    fragrance: z.object({ brand: z.string(), name: z.string() }),
-  }),
-);
-const storePriceResultSchema = z.object({ id: z.string().min(1) });
 
 function domainOf(raw: string): string {
   try {
@@ -140,15 +109,13 @@ function delay(ms: number): Promise<void> {
 }
 
 async function main() {
-  let urls: z.infer<typeof userUrlsSchema>;
+  let urls: RouterOutputs["getUserUrls"];
   try {
-    const parsed = userUrlsSchema.safeParse(await trpcQuery("getUserUrls"));
-    if (!parsed.success) {
-      throw new ApiError("invalid_response", "getUserUrls: unexpected row shape");
-    }
-    urls = parsed.data;
+    urls = await trpc.getUserUrls.query();
   } catch (error) {
-    console.error(`api_failed: could not load scrape targets — ${formatError(error)}`);
+    console.error(
+      `api_failed: could not load scrape targets — ${formatError(toApiError(error, "getUserUrls"))}`,
+    );
     process.exitCode = 1;
     return;
   }
@@ -198,25 +165,16 @@ async function main() {
         try {
           // storePrice is intentionally not retried: a retry after an
           // ambiguous network outcome could insert a duplicate observation.
-          const result = await trpcMutate("storePrice", {
+          await trpc.storePrice.mutate({
             retailerUrlId: retailer_url.id,
             amountMinor: outcome.amountMinor,
             currency: outcome.currency,
           });
-          if (!storePriceResultSchema.safeParse(result).success) {
-            record("invalid_response", domain);
-            console.log("invalid_response (storePrice returned an unexpected shape)");
-          } else {
-            record("stored", domain);
-            console.log(`stored $${(outcome.amountMinor / 100).toFixed(2)}`);
-          }
+          record("stored", domain);
+          console.log(`stored $${(outcome.amountMinor / 100).toFixed(2)}`);
         } catch (error) {
-          const category =
-            error instanceof ApiError && error.kind === "invalid_response"
-              ? "invalid_response"
-              : "api_failed";
-          record(category, domain);
-          console.log(`${category}: ${formatError(error)}`);
+          record("api_failed", domain);
+          console.log(`api_failed: ${formatError(toApiError(error, "storePrice"))}`);
         }
       }
 

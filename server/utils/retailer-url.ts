@@ -8,6 +8,15 @@
 export const MAX_URL_LENGTH = 2048;
 
 /**
+ * Return the `www.`-stripped hostname used as the key in `domainConfigs`.
+ * The domain is derived once, from the validated canonical URL, and stored on
+ * `retailer_url` so no separate retailer lookup is needed (Spec 07).
+ */
+export function retailerDomainOf(url: string): string {
+  return new URL(url).hostname.replace(/^www\./, "");
+}
+
+/**
  * Validate a retailer URL and return its canonical storage form.
  * Throws an Error with a user-facing message when the URL is invalid.
  * `supportedDomains` uses the existing www.-stripped hostname keys.

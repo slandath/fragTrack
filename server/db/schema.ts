@@ -122,17 +122,6 @@ export const fragrance = pgTable(
   (table) => [index("fragrance_user_id_idx").on(table.userId)],
 );
 
-export const retailer = pgTable("retailer", {
-  id: text("id").primaryKey(),
-  name: text("name").notNull().unique(),
-  url: text("url").notNull(),
-  createdAt: timestamp("created_at").defaultNow().notNull(),
-  updatedAt: timestamp("updated_at")
-    .defaultNow()
-    .$onUpdate(() => new Date())
-    .notNull(),
-});
-
 export const retailerUrl = pgTable(
   "retailer_url",
   {
@@ -140,9 +129,10 @@ export const retailerUrl = pgTable(
     fragranceId: text("fragrance_id")
       .notNull()
       .references(() => fragrance.id, { onDelete: "cascade" }),
-    retailerId: text("retailer_id")
-      .notNull()
-      .references(() => retailer.id),
+    // Derived from the URL at creation time. The authoritative list of
+    // supported domains and selectors remains `domainConfigs`; this column
+    // only records which configured domain a URL belongs to (Spec 07).
+    retailerDomain: text("retailer_domain").notNull(),
     url: text("url").notNull(),
     createdAt: timestamp("created_at").defaultNow().notNull(),
     updatedAt: timestamp("updated_at")
@@ -156,7 +146,7 @@ export const retailerUrl = pgTable(
     // this explicit index is kept for FK/lookup clarity and to support
     // selective cleanup queries without scanning the wider unique index.
     index("retailer_url_fragrance_id_idx").on(table.fragranceId),
-    index("retailer_url_retailer_id_idx").on(table.retailerId),
+    index("retailer_url_retailer_domain_idx").on(table.retailerDomain),
   ],
 );
 
@@ -224,10 +214,6 @@ export const retailerUrlRelations = relations(retailerUrl, ({ one, many }) => ({
   fragrance: one(fragrance, {
     fields: [retailerUrl.fragranceId],
     references: [fragrance.id],
-  }),
-  retailer: one(retailer, {
-    fields: [retailerUrl.retailerId],
-    references: [retailer.id],
   }),
   prices: many(price),
 }));
