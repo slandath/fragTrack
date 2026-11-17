@@ -88,6 +88,13 @@ const trpc = createTRPCClient<AppRouter>({
       fetch: async (url, init) => {
         const res = await fetch(url, init);
         if (!res.ok && !(res.headers.get("content-type") ?? "").includes("application/json")) {
+          // Release the error body so repeated gateway failures cannot pin
+          // connections open; the HTTP status below is what matters.
+          try {
+            await res.body?.cancel();
+          } catch {
+            // Best-effort: a failed cancel must not replace the ApiError.
+          }
           throw new ApiError("http", `HTTP ${res.status}`);
         }
         return res;

@@ -1,6 +1,6 @@
 import { describe, expect, it } from "vitest";
 import { MAX_AMOUNT_MINOR, isSupportedCurrency, parseAmountToMinor } from "./money.js";
-import { canonicalizeRetailerUrl } from "./retailer-url.js";
+import { canonicalizeRetailerUrl, retailerDomainOf } from "./retailer-url.js";
 
 const domains = { "fragrancex.com": {}, "example.com": {} };
 
@@ -104,5 +104,24 @@ describe("canonicalizeRetailerUrl", () => {
     expect(() =>
       canonicalizeRetailerUrl(`https://fragrancex.com/${"p".repeat(2048)}`, domains),
     ).toThrow(/at most 2048/);
+  });
+});
+
+describe("retailerDomainOf", () => {
+  it("derives the hostname without treating query or fragment text as credentials", () => {
+    // Regression guard for the migration backfill rule: an `@` in the query
+    // string or fragment must never be mistaken for URL credentials.
+    expect(retailerDomainOf("https://fragrancex.com?ref=user@example.com")).toBe(
+      "fragrancex.com",
+    );
+    expect(retailerDomainOf("https://fragrancex.com/p?ref=user@example.com")).toBe(
+      "fragrancex.com",
+    );
+    expect(retailerDomainOf("https://www.fragrancex.com/p#user@example.com")).toBe(
+      "fragrancex.com",
+    );
+    expect(
+      canonicalizeRetailerUrl("https://fragrancex.com?ref=user@example.com", domains),
+    ).toBe("https://fragrancex.com/?ref=user@example.com");
   });
 });
