@@ -59,7 +59,7 @@
       "breakpoints": true
     },
     {
-      "idx": 7,
+      "idx": 8,
       "version": "7",
       "when": 1794914660725,
       "tag": "0008_simplify_retailer_model",

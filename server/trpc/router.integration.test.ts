@@ -444,6 +444,16 @@ describe("retailer domain model", () => {
     await caller.deleteRetailerUrl({ id: created.id });
   });
 
+  it("derives the domain from the hostname, not an '@' in the query string", async () => {
+    const caller = sessionCaller(ids.userA);
+    const created = await caller.addRetailerUrl({
+      fragranceId: ids.fragA,
+      url: `https://fragrancex.com/domain-at-${runId}?ref=user@example.com`,
+    });
+    expect(created.retailerDomain).toBe("fragrancex.com");
+    await caller.deleteRetailerUrl({ id: created.id });
+  });
+
   it("keeps duplicate URL inserts atomic under the unique constraint", async () => {
     const caller = sessionCaller(ids.userA);
     const url = `https://fragrancex.com/rollback-${runId}`;

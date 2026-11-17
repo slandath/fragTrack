@@ -44,7 +44,7 @@ BEGIN
                regexp_replace(
                  regexp_replace(
                    regexp_replace(ru."url", '^[a-zA-Z][a-zA-Z0-9+.-]*://', '', 'i'),
-                   '^[^@/]*@', ''
+                   '^[^@/?#]*@', ''
                  ),
                  '[/?#].*$', ''
                ),
@@ -82,7 +82,7 @@ WITH derived AS (
              regexp_replace(
                regexp_replace(
                  regexp_replace(ru."url", '^[a-zA-Z][a-zA-Z0-9+.-]*://', '', 'i'),
-                 '^[^@/]*@', ''
+                 '^[^@/?#]*@', ''
                ),
                '[/?#].*$', ''
              ),

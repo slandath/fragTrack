@@ -54,6 +54,12 @@ class ApiError extends Error {
 // transport failures.
 function toApiError(error: unknown, path: string): ApiError {
   if (error instanceof TRPCClientError) {
+    // tRPC parses the body before checking the response status, so a gateway
+    // HTML error page never reaches `data.httpStatus`. The custom fetch below
+    // throws an ApiError with the status first; recover it from the cause.
+    if (error.cause instanceof ApiError) {
+      return new ApiError(error.cause.kind, `${path}: ${error.cause.message}`);
+    }
     const status = error.data?.httpStatus;
     const code = error.data?.code ? ` (${error.data.code})` : "";
     if (typeof status === "number") {
@@ -77,6 +83,15 @@ const trpc = createTRPCClient<AppRouter>({
     httpLink({
       url: `${validatedApiUrl}/trpc`,
       headers: () => ({ Authorization: `Bearer ${API_KEY}` }),
+      // Capture HTTP failures with non-JSON bodies (e.g. an HTML 502 page)
+      // before tRPC tries to parse them, so the status reaches toApiError.
+      fetch: async (url, init) => {
+        const res = await fetch(url, init);
+        if (!res.ok && !(res.headers.get("content-type") ?? "").includes("application/json")) {
+          throw new ApiError("http", `HTTP ${res.status}`);
+        }
+        return res;
+      },
     }),
   ],
 });

@@ -125,6 +125,8 @@ CI runs `pnpm check`, `pnpm build`, applies all migrations to a disposable Postg
    ```
 7. If the smoke test fails, redeploy the previous release. Migrations must stay compatible with a running or rollback release — keep them additive (no table/column removal or rename) until older releases are retired.
 
+**Exception — migration `0008`:** this release intentionally removes the legacy `retailer` table and `retailer_url.retailer_id` column, so the previous release cannot be redeployed against a database that has applied it. Before step 3, take a database snapshot/backup and verify the restore path; do not proceed to step 3 until the new build has been smoke-tested in a staging environment that ran the same migration. Treat this as a one-way schema change: rollback requires restoring the pre-`0008` snapshot, not redeploying the old release.
+
 ## Troubleshooting
 
 - **`Invalid environment configuration (…)`**: the error lists the exact variable names that are missing or malformed. Set them in `.env` (local) or the platform's environment settings (production). Secret values are never printed.
