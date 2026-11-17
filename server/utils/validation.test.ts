@@ -111,17 +111,15 @@ describe("retailerDomainOf", () => {
   it("derives the hostname without treating query or fragment text as credentials", () => {
     // Regression guard for the migration backfill rule: an `@` in the query
     // string or fragment must never be mistaken for URL credentials.
-    expect(retailerDomainOf("https://fragrancex.com?ref=user@example.com")).toBe(
-      "fragrancex.com",
-    );
+    expect(retailerDomainOf("https://fragrancex.com?ref=user@example.com")).toBe("fragrancex.com");
     expect(retailerDomainOf("https://fragrancex.com/p?ref=user@example.com")).toBe(
       "fragrancex.com",
     );
     expect(retailerDomainOf("https://www.fragrancex.com/p#user@example.com")).toBe(
       "fragrancex.com",
     );
-    expect(
-      canonicalizeRetailerUrl("https://fragrancex.com?ref=user@example.com", domains),
-    ).toBe("https://fragrancex.com/?ref=user@example.com");
+    expect(canonicalizeRetailerUrl("https://fragrancex.com?ref=user@example.com", domains)).toBe(
+      "https://fragrancex.com/?ref=user@example.com",
+    );
   });
 });
