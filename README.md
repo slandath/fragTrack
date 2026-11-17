@@ -70,6 +70,10 @@ This loads `getUserUrls` via tRPC, reuses one Chromium browser for the run, and 
   SELECT id, retailer_url_id, amount FROM price WHERE amount ~ '^0+(\.0+)?$';
   ```
 
+### Data model: retailer domain
+
+The `retailer` table was removed in migration `0008`. Its `name` and `url` columns both held the URL hostname, duplicating `domainConfigs` in `server/scraper/configs.ts`, and no user-visible feature displays retailer metadata. The `www.`-stripped hostname is now stored directly as `retailer_url.retailer_domain`, derived from the validated canonical URL at creation time; `domainConfigs` remains the authority for supported domains and selectors. Removing the table also removes the retailer upsert, per-retailer advisory locking, and orphan-cleanup logic that existed only to maintain the duplicate row. The migration backfills domains from the old relationship, reports rows where the URL hostname disagrees with the retailer, and treats the **URL as authoritative** for those rows. Fragrance ownership, URLs, prices, and price-to-URL links are unchanged.
+
 ## Environment Variables
 
 Configuration is validated once at server startup. Missing or invalid variables are reported **by name only**, never with their values. See `.env.example` for placeholders.

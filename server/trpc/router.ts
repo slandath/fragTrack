@@ -1,15 +1,14 @@
-import { initTRPC } from "@trpc/server";
-import { TRPCError } from "@trpc/server";
+import { initTRPC, TRPCError, type inferRouterOutputs } from "@trpc/server";
 import { z } from "zod";
-import { eq, and, desc, isNull, sql } from "drizzle-orm";
+import { eq, and, desc, isNull } from "drizzle-orm";
 import crypto from "node:crypto";
 import type { Context } from "./context.js";
-import { apiKey, fragrance, retailer, retailerUrl, price, user } from "../db/schema.js";
+import { apiKey, fragrance, retailerUrl, price, user } from "../db/schema.js";
 import { db } from "../index.js";
 import { domainConfigs } from "../scraper/configs.js";
 import { generateApiKey } from "../utils/api-key.js";
 import { CURRENCY_RE, MAX_AMOUNT_MINOR, MIN_AMOUNT_MINOR } from "../utils/money.js";
-import { canonicalizeRetailerUrl } from "../utils/retailer-url.js";
+import { canonicalizeRetailerUrl, retailerDomainOf } from "../utils/retailer-url.js";
 
 /** A Drizzle transaction handle (same query surface as the global db). */
 type DbTransaction = Parameters<Parameters<typeof db.transaction>[0]>[0];
@@ -69,53 +68,6 @@ const textSchema = (max: number) =>
     .string()
     .transform((s) => s.trim())
     .pipe(z.string().min(1).max(max));
-
-/**
- * Atomic upsert: ON CONFLICT DO NOTHING plus a fallback select means two
- * concurrent creators of the same domain both receive the same retailer row
- * instead of one failing with a 23505 unique violation.
- */
-async function findOrCreateRetailer(tx: DbTransaction, url: string) {
-  const hostname = new URL(url).hostname.replace(/^www\./, "");
-  const inserted = await tx
-    .insert(retailer)
-    .values({ id: crypto.randomUUID(), name: hostname, url: hostname })
-    .onConflictDoNothing({ target: retailer.name })
-    .returning();
-  if (inserted[0]) return inserted[0];
-
-  const existing = await tx.select().from(retailer).where(eq(retailer.name, hostname)).limit(1);
-  if (!existing[0]) throw new Error("Failed to resolve retailer after upsert");
-  return existing[0];
-}
-
-/**
- * Serialize retailer-lifetime changes across concurrent transactions. Two
- * transactions deleting a retailer's final URLs must not interleave their
- * orphan checks: under Read Committed each would still see the other's
- * uncommitted row and both would skip retailer deletion, leaving an orphan
- * (and an add racing a delete could fail its foreign-key check). The lock is
- * held until the calling transaction commits or rolls back. Re-requesting a
- * held key in the same transaction succeeds immediately. Multi-retailer
- * callers must pass IDs in a consistent order; sorting here provides it.
- */
-async function lockRetailers(tx: DbTransaction, retailerIds: string[]) {
-  for (const id of [...retailerIds].sort()) {
-    await tx.execute(sql`SELECT pg_advisory_xact_lock(hashtext(${id}))`);
-  }
-}
-
-async function cleanupOrphanedRetailer(tx: DbTransaction, retailerId: string) {
-  await lockRetailers(tx, [retailerId]);
-  const remaining = await tx
-    .select({ id: retailerUrl.id })
-    .from(retailerUrl)
-    .where(eq(retailerUrl.retailerId, retailerId))
-    .limit(1);
-  if (!remaining[0]) {
-    await tx.delete(retailer).where(eq(retailer.id, retailerId));
-  }
-}
 
 async function findFragrance(tx: DbTransaction, id: string, userId: string) {
   const results = await tx
@@ -255,12 +207,9 @@ export const appRouter = t.router({
         throw new TRPCError({ code: "BAD_REQUEST", message: (error as Error).message });
       }
 
-      // Ownership check, retailer resolution, and URL insert share one
-      // transaction. A failed URL insert rolls back retailer creation. The
-      // retailer lock serializes against concurrent orphan cleanups: without
-      // it a cleanup could commit after this transaction resolves an existing
-      // retailer but before it inserts the URL, failing the foreign-key
-      // check. Re-verify after locking in case that exact race already won.
+      // Ownership check and URL insert share one transaction so a concurrent
+      // duplicate insert cannot slip past the early check. The unique
+      // (fragranceId, url) constraint below is the atomic guard.
       return await db.transaction(async (tx) => {
         await findFragrance(tx, input.fragranceId, ctx.user.id);
 
@@ -278,19 +227,15 @@ export const appRouter = t.router({
           });
         }
 
-        let r = await findOrCreateRetailer(tx, canonical);
-        await lockRetailers(tx, [r.id]);
-        const stillThere = await tx
-          .select({ id: retailer.id })
-          .from(retailer)
-          .where(eq(retailer.id, r.id))
-          .limit(1);
-        if (!stillThere[0]) r = await findOrCreateRetailer(tx, canonical);
         const id = crypto.randomUUID();
+        const retailerDomain = retailerDomainOf(canonical);
         try {
-          await tx
-            .insert(retailerUrl)
-            .values({ id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical });
+          await tx.insert(retailerUrl).values({
+            id,
+            fragranceId: input.fragranceId,
+            retailerDomain,
+            url: canonical,
+          });
         } catch (error) {
           // The unique (fragranceId, url) constraint is the atomic duplicate
           // guard; the SELECT above is only an early, friendlier check.
@@ -303,7 +248,7 @@ export const appRouter = t.router({
           throw error;
         }
 
-        return { id, fragranceId: input.fragranceId, retailerId: r.id, url: canonical };
+        return { id, fragranceId: input.fragranceId, retailerDomain, url: canonical };
       });
     }),
   storePrice: scrapeProcedure
@@ -332,45 +277,32 @@ export const appRouter = t.router({
     .mutation(async ({ ctx, input }) => {
       await db.transaction(async (tx) => {
         const urlRows = await tx
-          .select({ retailerId: retailerUrl.retailerId })
+          .select({ id: retailerUrl.id })
           .from(retailerUrl)
           .innerJoin(fragrance, eq(retailerUrl.fragranceId, fragrance.id))
           .where(and(eq(retailerUrl.id, input.id), eq(fragrance.userId, ctx.user.id)))
           .limit(1);
         if (!urlRows[0]) throw new TRPCError({ code: "NOT_FOUND" });
 
-        // Lock before deleting: a concurrent deleter of the retailer's last
-        // other URL must serialize its orphan check after this delete.
-        await lockRetailers(tx, [urlRows[0].retailerId]);
         await tx.delete(retailerUrl).where(eq(retailerUrl.id, input.id));
-        await cleanupOrphanedRetailer(tx, urlRows[0].retailerId);
       });
+      return { id: input.id };
     }),
   deleteFragrance: sessionProcedure
     .input(z.object({ id: idSchema }))
     .mutation(async ({ ctx, input }) => {
-      await db.transaction(async (tx) => {
-        const f = await findFragrance(tx, input.id, ctx.user.id);
-
-        const urls = await tx
-          .select({ retailerId: retailerUrl.retailerId })
-          .from(retailerUrl)
-          .where(eq(retailerUrl.fragranceId, f.id));
-
-        // A retailer can own several URLs on the same fragrance (different
-        // products), so clean it up once.
-        const retailerIds = [...new Set(urls.map((u) => u.retailerId))];
-
-        // Lock before deleting (sorted inside lockRetailers, so concurrent
-        // multi-retailer deletions take locks in the same order).
-        await lockRetailers(tx, retailerIds);
-        await tx.delete(fragrance).where(eq(fragrance.id, f.id));
-
-        for (const id of retailerIds) {
-          await cleanupOrphanedRetailer(tx, id);
-        }
-      });
+      const rows = await db
+        .select({ id: fragrance.id })
+        .from(fragrance)
+        .where(and(eq(fragrance.id, input.id), eq(fragrance.userId, ctx.user.id)))
+        .limit(1);
+      if (!rows[0]) throw new TRPCError({ code: "NOT_FOUND", message: "Fragrance not found" });
+      await db.delete(fragrance).where(eq(fragrance.id, rows[0].id));
+      return { id: rows[0].id };
     }),
 });
 
 export type AppRouter = typeof appRouter;
+
+/** Inferred procedure outputs — shared with the client and scrape script. */
+export type RouterOutputs = inferRouterOutputs<AppRouter>;
