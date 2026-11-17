@@ -92,9 +92,11 @@ export default function AddFragranceForm({
               </p>
             )}
           </div>
-          <Button type="submit" disabled={isPending}>
-            {isPending ? "Adding…" : "Track"}
-          </Button>
+          <div className="sm:pt-5">
+            <Button type="submit" disabled={isPending}>
+              {isPending ? "Adding…" : "Track"}
+            </Button>
+          </div>
         </form>
 
         {error && (
