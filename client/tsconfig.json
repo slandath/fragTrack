@@ -6,6 +6,8 @@
     "module": "ESNext",
     "moduleResolution": "bundler",
     "strict": true,
+    // TS 7 reports errors inside upstream declarations (better-auth, drizzle,
+    // tRPC, fetch) that cannot be fixed here; keep the gate on our own code.
     "skipLibCheck": true,
     "noEmit": true,
     "paths": {
