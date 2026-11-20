@@ -31,8 +31,11 @@ export function getPriceFreshness(
   return now - time > STALE_PRICE_THRESHOLD_MS ? "stale" : "current";
 }
 
-export function formatObservationTime(scrapedAt: string | Date): string {
+export function formatObservationTime(
+  scrapedAt: string | Date,
+  fallback = "Observation time unknown",
+): string {
   const date = scrapedAt instanceof Date ? scrapedAt : new Date(scrapedAt);
-  if (Number.isNaN(date.getTime())) return "Observation time unknown";
+  if (Number.isNaN(date.getTime())) return fallback;
   return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
 }

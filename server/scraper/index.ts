@@ -3,6 +3,7 @@ import { addExtra } from "playwright-extra";
 import StealthPlugin from "puppeteer-extra-plugin-stealth";
 import { domainConfigs } from "./configs.js";
 import { parseAmountToMinor } from "../utils/money.js";
+import { retailerDomainOf } from "../utils/retailer-url.js";
 
 const chromium = addExtra(playwrightChromium);
 chromium.use(StealthPlugin());
@@ -119,7 +120,8 @@ function isTimeoutError(error: unknown): boolean {
   );
 }
 
-function delay(ms: number): Promise<void> {
+/** Shared pacing helper for scrape retries and the scrape operator script. */
+export function delay(ms: number): Promise<void> {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
@@ -189,7 +191,7 @@ export async function createScraper(options: ScraperOptions = {}): Promise<Scrap
     async scrape(url: string): Promise<ScrapeOutcome> {
       let hostname: string;
       try {
-        hostname = new URL(url).hostname.replace(/^www\./, "");
+        hostname = retailerDomainOf(url);
       } catch {
         return { category: "navigation_failed", detail: "invalid URL" };
       }
