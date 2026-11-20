@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-09) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -120,15 +120,15 @@ Adjust locations to match the final implementation, but keep tests close to the 
 
 ## Acceptance criteria
 
-- [ ] `vp test` or the documented `pnpm test` command discovers and runs tests successfully.
-- [ ] No-test discovery no longer occurs.
-- [ ] Two-user authorization-isolation tests pass.
-- [ ] API-key expiry, revocation, ban, bad-secret, and scope tests pass.
-- [ ] Invalid price inputs are rejected by tests.
-- [ ] Scraper price-parser fixture tests pass without network access.
-- [ ] Tests do not require production credentials or the developer's `.env` file.
-- [ ] Repeated test runs produce the same result.
-- [ ] CI runs the test suite, as completed by Spec 05.
+- [x] `vp test` or the documented `pnpm test` command discovers and runs tests successfully.
+- [x] No-test discovery no longer occurs.
+- [x] Two-user authorization-isolation tests pass.
+- [x] API-key expiry, revocation, ban, bad-secret, and scope tests pass.
+- [x] Invalid price inputs are rejected by tests.
+- [x] Scraper price-parser fixture tests pass without network access.
+- [x] Tests do not require production credentials or the developer's `.env` file.
+- [x] Repeated test runs produce the same result.
+- [x] CI runs the test suite, as completed by Spec 05.
 
 ## Verification
 

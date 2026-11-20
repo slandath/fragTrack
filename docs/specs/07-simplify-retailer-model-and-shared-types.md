@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-17) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -129,16 +129,16 @@ Update README architecture or data-model descriptions if the retailer model chan
 
 ## Acceptance criteria
 
-- [ ] The implementation records why the retailer table was removed or retained.
-- [ ] If removed, all retailer URLs and prices survive migration with correct domains.
-- [ ] Retailer creation and orphan-cleanup code are removed if no longer needed.
-- [ ] Client response types are inferred from the tRPC router where practical.
-- [ ] The client price type includes `scrapedAt`.
-- [ ] The scrape script no longer manually parses tRPC envelopes.
-- [ ] The scrape script no longer duplicates the `getUserUrls` response interface.
-- [ ] Demonstrably unused candidate dependencies are removed and the lockfile is updated.
-- [ ] User-visible fragrance, URL, price, and API-key behavior is unchanged.
-- [ ] Existing tests pass, with new or updated tests for migrated retailer data.
+- [x] The implementation records why the retailer table was removed or retained.
+- [x] If removed, all retailer URLs and prices survive migration with correct domains.
+- [x] Retailer creation and orphan-cleanup code are removed if no longer needed.
+- [x] Client response types are inferred from the tRPC router where practical.
+- [x] The client price type includes `scrapedAt`.
+- [x] The scrape script no longer manually parses tRPC envelopes.
+- [x] The scrape script no longer duplicates the `getUserUrls` response interface.
+- [x] Demonstrably unused candidate dependencies are removed and the lockfile is updated.
+- [x] User-visible fragrance, URL, price, and API-key behavior is unchanged.
+- [x] Existing tests pass, with new or updated tests for migrated retailer data.
 
 ## Verification
 
