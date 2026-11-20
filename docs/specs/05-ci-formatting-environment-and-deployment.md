@@ -137,7 +137,7 @@ Document one production sequence, adapted to the actual Railway configuration af
 
 If migrations are run by the hosting platform rather than manually, document the exact service or release command used.
 
-Migrations must remain compatible with running and rollback releases: a migration must not remove or rename a table or column (such as `retailer`) while an older release that still reads or writes it can be deployed or rolled back to. Defer destructive changes until those releases are retired.
+Migrations must remain compatible with running and rollback releases: a migration must not remove or rename a table or column while an older release that still reads or writes it can be deployed or rolled back to. Defer destructive changes until those releases are retired. Migration `0008` is the one shipped exception: it removes the legacy `retailer` table, so the previous release cannot run against a migrated database and rollback requires restoring the pre-`0008` snapshot (see the production exception in `README.md`).
 
 ## GitHub repository settings follow-ups
 

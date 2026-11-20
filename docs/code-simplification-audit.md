@@ -3,6 +3,8 @@
 > Audit base: `origin/main` at `df405bf` (production). Method: every merged PR mapped to its referenced spec in `docs/specs/`, spec read in full, implementation and test bodies opened on `origin/main`. Findings are labelled **[spec-mandated]** (spec required it — not slop), **[exceeds-spec]** (more than the spec asked), or **[spec-silent]** (spec never mentioned it). LOC saved is an estimate for the _current_ tree unless marked historical.
 >
 > Coverage note: PR audits for #14 and #18 and all three cross-cutting sweeps completed in the multi-agent pass. PRs #15–17, #19, #20 were completed in the follow-up pass after rate-limit failures. Spec 06's 12 acceptance checkboxes were not individually re-verified (see §7).
+>
+> Status note: this audit describes the `df405bf` baseline. Its estimates and action plan are not a statement about the current tree — the cleanup it proposes is implemented across PRs #23–#25.
 
 ## 1. Executive summary
 
@@ -91,8 +93,8 @@ Zod `.default(90)` twice at `server/trpc/router.ts:102` and :117, plus UI copy, 
 **A1. Env validation exists twice; the "single point" is bypassed [med, exceeds-spec].**
 Spec 05 asked for one validation point. `server/env.ts` (146 LOC) validates — but `server/db/ssl.ts:52` re-reads `process.env` directly and re-validates the URL protocol (`ssl.ts:56` duplicates `env.ts:75`), and the prod CA requirement is enforced in both (`env.ts:38` vs `ssl.ts:16`). Importing `server/index.ts` opens DB config without `validateEnv` ever running. Pass `env.databaseUrl/databaseCaCert/databaseTlsServername` into `databaseConnection(env)` and delete the re-reads. Est. ~15 LOC, medium effort (ssl tests mutate `process.env` and must be rewired).
 
-**A2. `ServerEnv` carries 5 fields nothing consumes [med, exceeds-spec].**
-`databaseCaCert`, `databaseTlsServername`, `apiUrl`, `apiKey`, `testDatabaseUrl` at `server/env.ts:9` — only test assertions read them; scrape/integration code reads `process.env` itself. Drop fields + reads. Est. ~12 LOC.
+**A2. `ServerEnv` carries fields nothing consumes [med, exceeds-spec].**
+`apiUrl`, `apiKey`, `testDatabaseUrl` at `server/env.ts:9` — only test assertions read them; scrape/integration code reads `process.env` itself. Drop those three fields + reads. Keep `databaseCaCert` and `databaseTlsServername`: A1 passes them into `databaseConnection`, so they are consumed by the single validated path. Est. ~12 LOC.
 
 **A3. Hand-rolled validators despite zod being a dependency [med, exceeds-spec].**
 `server/env.ts:57–82` hand-rolls `blank/read/httpUrl/postgresUrl` (~30 LOC); zod 4 is already used at `server/trpc/router.ts:2`. One zod schema with `safeParse` preserves the names-only aggregated errors (zod reports all issues). Est. ~35 LOC, low-medium risk.
@@ -172,7 +174,7 @@ Also: README migration procedures for already-applied migrations (0005 abort-ret
 3. T1/T2 integration trims (~65 LOC, keep DB-only assertions).
 4. Spec status flips (§5 option 1) + README procedure move (~20 LOC moved).
 
-**Medium (half-day):** 5. A1+A2+A4 env/ssl single path (~40 LOC; rewire ssl tests to pass args). 6. D1 hostname single-source incl. client rendering stored `retailerDomain` (~12 LOC + D3 currency bugfix). 7. A3 zod env schema (~35 LOC; preserve names-only errors).
+**Medium (half-day):** 5. A1+A2 env/ssl single path (rewire ssl tests to pass args). A4 is deferred: drizzle-kit's `{url}` credentials drop `ssl`, so returning `{connectionString, ssl}` would silently disable CA verification for migrations; the parsed credentials stay. 6. D1 hostname single-source incl. client rendering stored `retailerDomain` (~12 LOC + D3 currency bugfix). 7. A3 zod env schema (~35 LOC; preserve names-only errors).
 
 **Discuss first:** 8. A9 scrape error taxonomy (keep vs flatten), X5 shadcn surface, X1 alternative (wire relational queries instead of deleting), C2 `skipLibCheck` root-cause.
 

@@ -14,4 +14,27 @@ SELECT id, retailer_url_id, amount FROM price WHERE amount ~ '^0+(\.0+)?$';
 
 ## 0006 — duplicate URLs in pre-existing history
 
-Migration `0006` does not canonicalize rows stored before it: a legacy URL with a fragment and its canonical form can coexist and bypass duplicate detection. Normalize such history before relying on the unique constraint for old data.
+Migration `0006` does not canonicalize rows stored before it: a legacy URL with a fragment (or a default port) and its canonical form can coexist for the same fragrance, because the unique constraint compares stored text. The constraint cannot detect these pairs until they are reconciled.
+
+Do **not** simply update the legacy row's `url` to the canonical form while both rows exist — the `retailer_url_fragrance_url_unique` constraint will reject it. Identify candidate pairs first:
+
+```sql
+SELECT a.id AS legacy_id, a.url AS legacy_url, b.id AS canonical_id, b.url AS canonical_url
+FROM retailer_url a
+JOIN retailer_url b
+  ON b.fragrance_id = a.fragrance_id
+ AND b.id <> a.id
+ AND b.url = regexp_replace(regexp_replace(regexp_replace(a.url, '#.*$', ''), ':443/', '/'), ':80/', '/')
+WHERE a.url LIKE '%#%' OR a.url LIKE '%:443/%' OR a.url LIKE '%:80/%';
+```
+
+For each pair, merge in one transaction: move every linked price observation from the legacy row to the canonical row, then delete the legacy row. Verify the before/after price counts per canonical URL.
+
+```sql
+BEGIN;
+UPDATE price SET retailer_url_id = :canonical_id WHERE retailer_url_id = :legacy_id;
+DELETE FROM retailer_url WHERE id = :legacy_id;
+COMMIT;
+```
+
+Keep the canonical row (the one without fragment/default port) so existing links and canonicalization rules stay consistent.

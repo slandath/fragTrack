@@ -291,9 +291,12 @@ describe("price writes (numeric contract)", () => {
 
   it("rejects invalid amounts and currencies before any write", async () => {
     const caller = sessionCaller(ids.userA);
-    // Representative values; the full matrix lives in validation.test.ts.
+    // Representative values; the full parsing matrix lives in validation.test.ts.
+    // The oversized case guards this router's own Zod limit, which unit tests of
+    // decimal-string parsing do not cover (Spec 02).
     for (const input of [
       { retailerUrlId: ids.urlA, amountMinor: 0, currency: "USD" },
+      { retailerUrlId: ids.urlA, amountMinor: 100_000_000, currency: "USD" },
       { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" },
     ]) {
       await expect(caller.storePrice(input)).rejects.toMatchObject({ code: "BAD_REQUEST" });
