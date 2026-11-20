@@ -12,7 +12,6 @@
     "start": "node dist/server.js",
     "build": "pnpm --filter client build && tsc -b tsconfig.build.json",
     "test": "vitest run --config vitest.config.ts",
-    "test:unit": "vitest run --config vitest.config.ts",
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "scrape": "tsx scripts/scrape.ts",
     "lint": "oxlint",

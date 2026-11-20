@@ -156,15 +156,11 @@ afterAll(async () => {
 });
 
 describe("unauthenticated requests", () => {
+  // The exhaustive denial and healthcheck matrices live in scope.test.ts;
+  // these representatives only prove the real createContext path denies.
   it("rejects protected procedures", async () => {
     await expect(anonCaller.getUserUrls()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(anonCaller.getFragrances()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-    await expect(anonCaller.getLatestPrices()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
     await expect(anonCaller.listApiKeys()).rejects.toMatchObject({ code: "UNAUTHORIZED" });
-  });
-
-  it("keeps healthcheck public", async () => {
-    await expect(anonCaller.healthcheck()).resolves.toMatchObject({ status: "ok" });
   });
 });
 
@@ -247,26 +243,9 @@ describe("API-key scope and lifecycle", () => {
 
   it("denies key management and account procedures", async () => {
     const caller = await keyCaller(keys.valid.key);
+    // Representative denials; scope.test.ts holds the exhaustive matrix.
     await expect(caller.listApiKeys()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.createApiKey({})).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.rotateApiKey({ id: keys.valid.id })).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
-    await expect(caller.revokeApiKey({ id: keys.valid.id })).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
     await expect(caller.getFragrances()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.getLatestPrices()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.getSupportedDomains()).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.addFragrance({ name: "X", brand: "Y" })).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
-    await expect(
-      caller.addRetailerUrl({ fragranceId: ids.fragA, url: "https://fragrancex.com/z" }),
-    ).rejects.toMatchObject({ code: "FORBIDDEN" });
-    await expect(caller.deleteRetailerUrl({ id: ids.urlA })).rejects.toMatchObject({
-      code: "FORBIDDEN",
-    });
     await expect(caller.deleteFragrance({ id: ids.fragA })).rejects.toMatchObject({
       code: "FORBIDDEN",
     });
@@ -312,15 +291,13 @@ describe("price writes (numeric contract)", () => {
 
   it("rejects invalid amounts and currencies before any write", async () => {
     const caller = sessionCaller(ids.userA);
+    // Representative values; the full parsing matrix lives in validation.test.ts.
+    // The oversized case guards this router's own Zod limit, which unit tests of
+    // decimal-string parsing do not cover (Spec 02).
     for (const input of [
       { retailerUrlId: ids.urlA, amountMinor: 0, currency: "USD" },
-      { retailerUrlId: ids.urlA, amountMinor: -500, currency: "USD" },
       { retailerUrlId: ids.urlA, amountMinor: 100_000_000, currency: "USD" },
-      { retailerUrlId: ids.urlA, amountMinor: 24.99, currency: "USD" },
       { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "usd" },
-      { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "USDD" },
-      { retailerUrlId: ids.urlA, amountMinor: 1000, currency: "" },
-      { retailerUrlId: "", amountMinor: 1000, currency: "USD" },
     ]) {
       await expect(caller.storePrice(input)).rejects.toMatchObject({ code: "BAD_REQUEST" });
     }
@@ -406,12 +383,8 @@ describe("fragrance and retailer-URL validation", () => {
 
   it("rejects bad retailer URLs and duplicate canonical URLs", async () => {
     const caller = sessionCaller(ids.userA);
-    for (const url of [
-      "ftp://fragrancex.com/p",
-      "https://user:pass@fragrancex.com/p",
-      "https://evil.com/p",
-      "not a url",
-    ]) {
+    // Representative rejections; the full URL matrix lives in validation.test.ts.
+    for (const url of ["ftp://fragrancex.com/p", "https://evil.com/p"]) {
       await expect(caller.addRetailerUrl({ fragranceId: ids.fragA, url })).rejects.toMatchObject({
         code: "BAD_REQUEST",
       });

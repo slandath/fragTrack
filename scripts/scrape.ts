@@ -1,7 +1,8 @@
 import { config } from "dotenv";
 import { createTRPCClient, httpLink, TRPCClientError } from "@trpc/client";
-import { createScraper, type ScrapeCategory } from "../server/scraper/index.js";
+import { createScraper, delay, type ScrapeCategory } from "../server/scraper/index.js";
 import type { AppRouter, RouterOutputs } from "../server/trpc/router.js";
+import { formatPrice } from "../client/src/lib/price.js";
 
 config();
 
@@ -103,18 +104,6 @@ const trpc = createTRPCClient<AppRouter>({
   ],
 });
 
-function domainOf(raw: string): string {
-  try {
-    return new URL(raw).hostname.replace(/^www\./, "");
-  } catch {
-    return "unknown";
-  }
-}
-
-function delay(ms: number): Promise<void> {
-  return new Promise((resolve) => setTimeout(resolve, ms));
-}
-
 async function main() {
   let urls: RouterOutputs["getUserUrls"];
   try {
@@ -145,7 +134,7 @@ async function main() {
   } catch (error) {
     // Browser launch is a global failure: no per-URL work can proceed.
     console.error(`browser_failed: could not launch browser — ${formatError(error)}`);
-    for (const { retailer_url } of urls) record("browser_failed", domainOf(retailer_url.url));
+    for (const { retailer_url } of urls) record("browser_failed", retailer_url.retailerDomain);
     printSummary(counts, byDomain);
     process.exitCode = 1;
     return;
@@ -154,7 +143,7 @@ async function main() {
   try {
     for (let i = 0; i < urls.length; i++) {
       const { retailer_url, fragrance } = urls[i];
-      const domain = domainOf(retailer_url.url);
+      const domain = retailer_url.retailerDomain;
       // The bracketed id identifies the target when several URLs share a
       // fragrance and retailer; failure lines repeat it (Spec 04).
       process.stdout.write(
@@ -178,7 +167,7 @@ async function main() {
             currency: outcome.currency,
           });
           record("stored", domain);
-          console.log(`stored $${(outcome.amountMinor / 100).toFixed(2)}`);
+          console.log(`stored ${formatPrice(outcome.amountMinor, outcome.currency)}`);
         } catch (error) {
           record("api_failed", domain);
           console.log(`api_failed: ${formatError(toApiError(error, "storePrice"))}`);
@@ -191,18 +180,14 @@ async function main() {
     await scraper.close();
   }
 
-  printSummary(counts, byDomain);
-  const failed = [...counts].reduce(
-    (sum, [category, count]) => sum + (category === "stored" ? 0 : count),
-    0,
-  );
+  const failed = printSummary(counts, byDomain);
   if (failed > 0) process.exitCode = 1;
 }
 
 function printSummary(
   counts: Map<ScrapeCategory, number>,
   byDomain: Map<string, { stored: number; failed: number }>,
-) {
+): number {
   console.log("\nSummary by category:");
   for (const [category, count] of [...counts].sort(([a], [b]) => a.localeCompare(b))) {
     console.log(`  ${category}: ${count}`);
@@ -217,6 +202,7 @@ function printSummary(
     0,
   );
   console.log(`\nDone: ${stored} observations stored, ${failed} failed.\n`);
+  return failed;
 }
 
 main().catch((error) => {

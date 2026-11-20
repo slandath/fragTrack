@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-09) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -97,15 +97,15 @@ Separately, before this spec `server/db/ssl.ts` always disabled PostgreSQL TLS c
 
 ## Acceptance criteria
 
-- [ ] A valid API key succeeds on `getUserUrls` and `storePrice` for resources owned by its user.
-- [ ] A valid API key cannot call any other protected procedure.
-- [ ] A valid API key cannot access another user's URLs or store prices for another user's retailer URL.
-- [ ] A browser session retains all current protected functionality.
-- [ ] Expired, revoked, banned-user, and incorrect-secret API keys are rejected.
-- [ ] PostgreSQL TLS verification is enabled when CA material is configured.
-- [ ] Invalid or missing required production TLS configuration fails clearly at startup.
-- [ ] `.env.example` and `README.md` accurately describe the implemented TLS behavior.
-- [ ] Existing scrape behavior succeeds with a valid API key.
+- [x] A valid API key succeeds on `getUserUrls` and `storePrice` for resources owned by its user.
+- [x] A valid API key cannot call any other protected procedure.
+- [x] A valid API key cannot access another user's URLs or store prices for another user's retailer URL.
+- [x] A browser session retains all current protected functionality.
+- [x] Expired, revoked, banned-user, and incorrect-secret API keys are rejected.
+- [x] PostgreSQL TLS verification is enabled when CA material is configured.
+- [x] Invalid or missing required production TLS configuration fails clearly at startup.
+- [x] `.env.example` and `README.md` accurately describe the implemented TLS behavior.
+- [x] Existing scrape behavior succeeds with a valid API key.
 
 ## Verification
 

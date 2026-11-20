@@ -5,14 +5,9 @@ import { Input } from "@/components/ui/input";
 import { Skeleton } from "@/components/ui/skeleton";
 import { Card, CardHeader, CardTitle, CardContent } from "@/components/ui/card";
 import ConfirmDialog from "@/components/ConfirmDialog";
+import { formatObservationTime } from "@/lib/price";
 
 type KeyAction = { kind: "rotate" | "revoke"; id: string; label: string };
-
-function formatTimestamp(value: string | Date): string {
-  const date = value instanceof Date ? value : new Date(value);
-  if (Number.isNaN(date.getTime())) return "unknown";
-  return date.toLocaleString(undefined, { dateStyle: "medium", timeStyle: "short" });
-}
 
 export default function Settings() {
   const utils = trpc.useUtils();
@@ -184,14 +179,14 @@ export default function Settings() {
                       <p className="break-all font-mono">ft_{key.id}_...</p>
                       <p className="text-muted-foreground">
                         {key.revokedAt
-                          ? `Revoked ${formatTimestamp(key.revokedAt)}`
+                          ? `Revoked ${formatObservationTime(key.revokedAt, "unknown")}`
                           : expired
-                            ? `Expired ${formatTimestamp(expiresAt)}`
-                            : `Expires ${formatTimestamp(expiresAt)}`}
+                            ? `Expired ${formatObservationTime(expiresAt, "unknown")}`
+                            : `Expires ${formatObservationTime(expiresAt, "unknown")}`}
                       </p>
                       {key.lastUsedAt && (
                         <p className="text-muted-foreground">
-                          Last used {formatTimestamp(key.lastUsedAt)}
+                          Last used {formatObservationTime(key.lastUsedAt, "unknown")}
                         </p>
                       )}
                     </div>

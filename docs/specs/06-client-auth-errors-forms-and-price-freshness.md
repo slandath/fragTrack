@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-16) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -132,18 +132,18 @@ API-key revoke and rotate actions should require an appropriate confirmation or 
 
 ## Acceptance criteria
 
-- [ ] Visiting `/settings` while signed out redirects to `/login`.
-- [ ] Visiting `/` while signed out redirects without rendering protected content.
-- [ ] No `navigate()` call occurs during React rendering.
-- [ ] Protected queries are not intentionally enabled before a session exists.
-- [ ] Failed creates, deletes, and API-key actions show user-visible errors.
-- [ ] A failed query is not displayed as an empty data state.
-- [ ] Add-fragrance and add-URL forms submit with Enter and expose accessible labels.
-- [ ] Failed form submissions retain user input.
-- [ ] A signed-in user can sign out and is returned to `/login`.
-- [ ] Delete actions use an accessible in-app confirmation.
-- [ ] Each displayed price includes its observation time.
-- [ ] Stale prices are identified by text or icon as well as visual styling.
+- [x] Visiting `/settings` while signed out redirects to `/login`.
+- [x] Visiting `/` while signed out redirects without rendering protected content.
+- [x] No `navigate()` call occurs during React rendering.
+- [x] Protected queries are not intentionally enabled before a session exists.
+- [x] Failed creates, deletes, and API-key actions show user-visible errors.
+- [x] A failed query is not displayed as an empty data state.
+- [x] Add-fragrance and add-URL forms submit with Enter and expose accessible labels.
+- [x] Failed form submissions retain user input.
+- [x] A signed-in user can sign out and is returned to `/login`.
+- [x] Delete actions use an accessible in-app confirmation.
+- [x] Each displayed price includes its observation time.
+- [x] Stale prices are identified by text or icon as well as visual styling.
 
 ## Verification
 

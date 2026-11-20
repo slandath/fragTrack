@@ -59,15 +59,11 @@ This loads `getUserUrls` via tRPC, reuses one Chromium browser for the run, and 
 - The API accepts only exact amounts from 1 to 99,999,999 minor units (max $999,999.99). Zero and negative amounts are rejected, values with more than two decimals are rejected rather than rounded, and currency must match `^[A-Z]{3}$`.
 - Ambiguous scraper text — price ranges, multi-decimal values, signs, extra numbers — is rejected instead of concatenated into a plausible amount.
 - The dashboard formats with `Intl.NumberFormat` and sorts numerically; no `parseFloat` on text.
-- Retailer URLs must use http/https, contain no credentials, and belong to a supported domain. They are stored in canonical form (lowercased host, default ports and fragments removed; path and query preserved) and a duplicate URL for the same fragrance is rejected with a clear error, enforced atomically by a unique constraint (migration `0006`). Migration `0006` does not canonicalize rows stored before it: a legacy URL with a fragment and its canonical form can coexist and bypass duplicate detection. Normalize such history per the duplicate-cleanup procedure before relying on the constraint for old data.
-- Migration `0005` converts valid legacy decimal amounts to cents and aborts with a row report when a value cannot be safely converted, so ambiguous history is never silently rewritten. All changes roll back on abort. Whole-number legacy values (e.g. `2030`, possibly a collapsed price range) convert but stay quarantined and hidden from displayed prices until an operator verifies them:
+- Retailer URLs must use http/https, contain no credentials, and belong to a supported domain. They are stored in canonical form (lowercased host, default ports and fragments removed; path and query preserved) and a duplicate URL for the same fragrance is rejected with a clear error, enforced atomically by a unique constraint (migration `0006`). That constraint compares stored text, so a pre-`0006` fragment URL and its canonical form can still coexist for one fragrance until they are reconciled; see the [migration runbook](docs/migrations-runbook.md) for the one-time collision procedure and other already-applied migration cleanups.
+- Migration `0005` converted valid legacy decimal amounts to cents. Whole-number legacy values (e.g. `2030`, possibly a collapsed price range) stay quarantined and hidden from displayed prices until an operator verifies them. Review and clear quarantined rows with:
   ```sql
   SELECT id, retailer_url_id, amount_minor FROM price WHERE quarantined;
   UPDATE price SET quarantined = false WHERE id = '...'; -- after verification
-  ```
-  A legacy amount of `0.00` converts to zero and passes the row report (it is convertible), but the later positive-amount check aborts the migration. The abort rolls back `amount_minor`, so find the rows through the legacy text column, correct or delete them, then retry:
-  ```sql
-  SELECT id, retailer_url_id, amount FROM price WHERE amount ~ '^0+(\.0+)?$';
   ```
 
 ### Data model: retailer domain

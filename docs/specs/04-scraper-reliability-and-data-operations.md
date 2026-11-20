@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-16) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -124,16 +124,16 @@ Before adding a unique constraint to existing data, detect duplicates and define
 
 ## Acceptance criteria
 
-- [ ] Repeated scrape runs do not accumulate Chromium processes after navigation or extraction failures.
-- [ ] One browser is reused for a normal scrape run.
-- [ ] Per-URL failures use the defined failure taxonomy.
-- [ ] Selector timeouts and missing prices are visible in the summary.
-- [ ] Retry behavior is bounded and documented.
-- [ ] Concurrent retailer creation does not produce a uniqueness failure for one request.
-- [ ] Add/delete retailer-url operations do not leave inconsistent retailer state after an injected failure.
-- [ ] Migration adds the required retailer-url indexes.
-- [ ] Duplicate retailer URLs are handled according to Spec 03.
-- [ ] The scrape summary reports stored and failed counts by category.
+- [x] Repeated scrape runs do not accumulate Chromium processes after navigation or extraction failures.
+- [x] One browser is reused for a normal scrape run.
+- [x] Per-URL failures use the defined failure taxonomy.
+- [x] Selector timeouts and missing prices are visible in the summary.
+- [x] Retry behavior is bounded and documented.
+- [x] Concurrent retailer creation does not produce a uniqueness failure for one request.
+- [x] Add/delete retailer-url operations do not leave inconsistent retailer state after an injected failure.
+- [x] Migration adds the required retailer-url indexes.
+- [x] Duplicate retailer URLs are handled according to Spec 03.
+- [x] The scrape summary reports stored and failed counts by category.
 
 ## Verification
 

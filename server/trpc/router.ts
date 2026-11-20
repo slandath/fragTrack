@@ -7,7 +7,7 @@ import { apiKey, fragrance, retailerUrl, price, user } from "../db/schema.js";
 import { db } from "../index.js";
 import { domainConfigs } from "../scraper/configs.js";
 import { generateApiKey } from "../utils/api-key.js";
-import { CURRENCY_RE, MAX_AMOUNT_MINOR, MIN_AMOUNT_MINOR } from "../utils/money.js";
+import { MAX_AMOUNT_MINOR, MIN_AMOUNT_MINOR, isSupportedCurrency } from "../utils/money.js";
 import { canonicalizeRetailerUrl, retailerDomainOf } from "../utils/retailer-url.js";
 
 /** A Drizzle transaction handle (same query surface as the global db). */
@@ -256,7 +256,7 @@ export const appRouter = t.router({
       z.object({
         retailerUrlId: idSchema,
         amountMinor: z.number().int().min(MIN_AMOUNT_MINOR).max(MAX_AMOUNT_MINOR),
-        currency: z.string().regex(CURRENCY_RE),
+        currency: z.string().refine(isSupportedCurrency, "Must be a 3-letter currency code"),
       }),
     )
     .mutation(async ({ ctx, input }) => {

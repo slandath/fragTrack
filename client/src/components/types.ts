@@ -10,7 +10,10 @@ type PriceRow = RouterOutputs["getLatestPrices"][number];
 // inferred types keeps them in sync with the router without exposing
 // server-only bookkeeping to components.
 export type Fragrance = Pick<FragranceRow["fragrance"], "id" | "brand" | "name">;
-export type RetailerUrl = Pick<NonNullable<FragranceRow["retailer_url"]>, "id" | "url">;
+export type RetailerUrl = Pick<
+  NonNullable<FragranceRow["retailer_url"]>,
+  "id" | "url" | "retailerDomain"
+>;
 
 // tRPC serializes timestamps to strings on the wire, but callers may also
 // pass real Dates (e.g. in tests). Keep both, while requiring the field.

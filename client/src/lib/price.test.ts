@@ -1,5 +1,10 @@
 import { describe, expect, it } from "vitest";
-import { formatPrice, getPriceFreshness, STALE_PRICE_THRESHOLD_MS } from "./price.js";
+import {
+  formatObservationTime,
+  formatPrice,
+  getPriceFreshness,
+  STALE_PRICE_THRESHOLD_MS,
+} from "./price.js";
 
 const NOW = Date.UTC(2026, 10, 16, 12, 0, 0);
 
@@ -8,6 +13,13 @@ describe("formatPrice", () => {
     expect(formatPrice(2499, "USD")).toBe("$24.99");
     expect(formatPrice(129999, "USD")).toBe("$1,299.99");
     expect(formatPrice(1950, "EUR")).toContain("19.50");
+  });
+});
+
+describe("formatObservationTime", () => {
+  it("uses the caller's fallback for unparseable dates", () => {
+    expect(formatObservationTime("not-a-date", "unknown")).toBe("unknown");
+    expect(formatObservationTime("not-a-date")).toBe("Observation time unknown");
   });
 });
 

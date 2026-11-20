@@ -2,7 +2,7 @@
 
 ## Status
 
-Proposed
+Implemented (2026-11-16) — the context below describes the state before implementation.
 
 ## Priority
 
@@ -133,16 +133,16 @@ Use consistent non-empty string validation for IDs. Prefer UUID validation where
 
 ## Acceptance criteria
 
-- [ ] New prices are stored using the selected exact numeric representation.
-- [ ] Invalid amount and currency inputs are rejected by the API.
-- [ ] Invalid legacy price values are not silently converted into incorrect amounts.
-- [ ] The migration applies cleanly to an empty database.
-- [ ] The migration behavior for representative valid and invalid legacy rows is tested.
-- [ ] Fragrance names and brands are trimmed and length-limited.
-- [ ] Retailer URLs reject unsupported protocols and embedded credentials.
-- [ ] Duplicate normalized retailer URLs for one fragrance are rejected.
-- [ ] The scraper submits only validated prices.
-- [ ] The client formats and sorts numeric prices without unchecked text parsing.
+- [x] New prices are stored using the selected exact numeric representation.
+- [x] Invalid amount and currency inputs are rejected by the API.
+- [x] Invalid legacy price values are not silently converted into incorrect amounts.
+- [x] The migration applies cleanly to an empty database.
+- [x] The migration behavior for representative valid and invalid legacy rows is tested.
+- [x] Fragrance names and brands are trimmed and length-limited.
+- [x] Retailer URLs reject unsupported protocols and embedded credentials.
+- [x] Duplicate normalized retailer URLs for one fragrance are rejected.
+- [x] The scraper submits only validated prices.
+- [x] The client formats and sorts numeric prices without unchecked text parsing.
 
 ## Verification
 

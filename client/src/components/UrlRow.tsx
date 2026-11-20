@@ -11,12 +11,7 @@ export default function UrlRow({
   onRequestDelete,
   deletePending,
 }: UrlRowProps) {
-  let hostname = url.url;
-  try {
-    hostname = new URL(url.url).hostname.replace(/^www\./, "");
-  } catch {
-    // Keep the stored value visible if it is not parseable.
-  }
+  const hostname = url.retailerDomain;
 
   const freshness = price ? getPriceFreshness(price.scrapedAt) : "never";
   const scrapedAt = price?.scrapedAt;
