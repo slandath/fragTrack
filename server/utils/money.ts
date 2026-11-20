@@ -3,7 +3,6 @@
 
 export const MIN_AMOUNT_MINOR = 1;
 export const MAX_AMOUNT_MINOR = 99_999_999; // 999,999.99
-export const MAX_AMOUNT_LABEL = "999,999.99";
 
 const DECIMAL_RE = /^(\d+)(?:\.(\d{1,2}))?$/;
 export const CURRENCY_RE = /^[A-Z]{3}$/;

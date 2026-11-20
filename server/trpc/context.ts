@@ -6,8 +6,6 @@ import { auth } from "../utils/auth.js";
 import { apiKey, user } from "../db/schema.js";
 import { apiKeyHashMatches, parseApiKey } from "../utils/api-key.js";
 
-export type AuthType = "session" | "api-key" | "none";
-
 export const createContext = async ({ req }: CreateFastifyContextOptions) => {
   const authorization = req.headers.authorization;
   if (authorization) {
@@ -38,7 +36,6 @@ export const createContext = async ({ req }: CreateFastifyContextOptions) => {
           db,
           session: { user: row.user, session: null },
           authType: "api-key" as const,
-          apiKeyId: row.key.id,
         };
       }
     }

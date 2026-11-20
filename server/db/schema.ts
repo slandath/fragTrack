@@ -1,4 +1,4 @@
-import { relations, sql } from "drizzle-orm";
+import { sql } from "drizzle-orm";
 import {
   boolean,
   check,
@@ -175,45 +175,3 @@ export const price = pgTable(
     check("price_currency_code", sql`${table.currency} ~ '^[A-Z]{3}$'`),
   ],
 );
-
-export const userRelations = relations(user, ({ many }) => ({
-  sessions: many(session),
-  accounts: many(account),
-  apiKeys: many(apiKey),
-}));
-
-export const apiKeyRelations = relations(apiKey, ({ one }) => ({
-  user: one(user, {
-    fields: [apiKey.userId],
-    references: [user.id],
-  }),
-}));
-
-export const sessionRelations = relations(session, ({ one }) => ({
-  user: one(user, {
-    fields: [session.userId],
-    references: [user.id],
-  }),
-}));
-
-export const accountRelations = relations(account, ({ one }) => ({
-  user: one(user, {
-    fields: [account.userId],
-    references: [user.id],
-  }),
-}));
-
-export const priceRelations = relations(price, ({ one }) => ({
-  retailerUrl: one(retailerUrl, {
-    fields: [price.retailerUrlId],
-    references: [retailerUrl.id],
-  }),
-}));
-
-export const retailerUrlRelations = relations(retailerUrl, ({ one, many }) => ({
-  fragrance: one(fragrance, {
-    fields: [retailerUrl.fragranceId],
-    references: [fragrance.id],
-  }),
-  prices: many(price),
-}));
