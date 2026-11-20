@@ -183,7 +183,7 @@ Also: README migration procedures for already-applied migrations (0005 abort-ret
 - **Spec 06 checkboxes**: 12 acceptance items not individually re-verified against every client file — spot-check before archiving that spec.
 - **Pre-0005 databases**: whether any deployment still needs the README 0005 abort procedure cannot be determined from the repo (production is migrated; staging unknown).
 - **Relational queries**: X1 assumes none are planned. If Drizzle relational queries are on the roadmap, wire `drizzle({schema})` instead of deleting.
-- **Railway config**: no Railway config exists in-repo, so Spec 05's "adapt deployment docs to actual Railway configuration" remains unverifiable from code alone.
+- **Railway config**: no Railway config exists in-repo, so Spec 05's "adapt deployment docs to actual Railway configuration" is unverifiable from code alone. Re-check it against the platform with the procedure in [docs/railway-config-check.md](railway-config-check.md); do not record a snapshot of the configuration here.
 - PRs #1–#6 (pre-spec) were mapped but not audited; their code is entirely subsumed by the spec-era tree audited above.
 
 ---
