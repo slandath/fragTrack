@@ -1,6 +1,6 @@
 import "dotenv/config";
 // Validate after dotenv loads .env, before modules that read configuration.
-import { env } from "./env.js";
+import { env } from "./env-startup.js";
 import Fastify from "fastify";
 import fastifyStatic from "@fastify/static";
 import { auth } from "./utils/auth.js";

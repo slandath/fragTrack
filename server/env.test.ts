@@ -1,5 +1,5 @@
 import { describe, expect, it } from "vitest";
-import { validateEnv } from "./env.js";
+import { validateDatabaseEnv, validateEnv } from "./env.js";
 
 const SECRET_SENTINEL = "do-not-leak-this-secret-value";
 
@@ -95,12 +95,26 @@ describe("validateEnv", () => {
     ).toContain("DATABASE_URL");
   });
 
-  it("validates the optional scrape and test-database URLs when provided", () => {
-    expect(messageOf(() => validateEnv({ ...production, API_URL: "not a url" }))).toContain(
-      "API_URL",
-    );
+  it("requires DATABASE_URL in every mode", () => {
+    expect(messageOf(() => validateEnv({ NODE_ENV: "test" }))).toContain("DATABASE_URL");
+  });
+});
+
+describe("validateDatabaseEnv", () => {
+  it("validates only the database fields the Drizzle CLI needs", () => {
+    const database = validateDatabaseEnv({
+      DATABASE_URL: production.DATABASE_URL,
+      PORT: "70000", // server-only; irrelevant to the CLI
+      API_URL: "not a url", // validated by the scrape script instead
+    });
+    expect(database.databaseUrl).toBe(production.DATABASE_URL);
+    expect(database.nodeEnv).toBe("development");
+  });
+
+  it("rejects a missing or non-postgres database URL", () => {
+    expect(messageOf(() => validateDatabaseEnv({}))).toContain("DATABASE_URL");
     expect(
-      messageOf(() => validateEnv({ ...production, TEST_DATABASE_URL: "https://example.com" })),
-    ).toContain("TEST_DATABASE_URL");
+      messageOf(() => validateDatabaseEnv({ DATABASE_URL: "https://example.com/db" })),
+    ).toContain("DATABASE_URL");
   });
 });
