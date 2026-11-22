@@ -13,5 +13,5 @@
     "erasableSyntaxOnly": true,
     "skipLibCheck": true
   },
-  "include": ["drizzle.config.ts"]
+  "include": ["drizzle.config.ts", "scripts/**/*.ts"]
 }

@@ -41,11 +41,11 @@ const validatedApiUrl = validateApiUrl(API_URL);
 type ApiErrorKind = "network" | "http" | "trpc";
 
 class ApiError extends Error {
-  constructor(
-    readonly kind: ApiErrorKind,
-    message: string,
-  ) {
+  readonly kind: ApiErrorKind;
+
+  constructor(kind: ApiErrorKind, message: string) {
     super(message);
+    this.kind = kind;
     this.name = "ApiError";
   }
 }
