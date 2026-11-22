@@ -5,6 +5,7 @@ import {
   HttpFailure,
   TrpcFailure,
   formatFailure,
+  isTransient,
   runScrape,
   summaryText,
   toApiFailure,
@@ -103,8 +104,30 @@ describe("typed scrape CLI failures", () => {
     expect(formatFailure(deterministic)).toBe("trpc: storePrice: nope (NOT_FOUND)");
 
     const gateway = new HttpFailure({ path: "", message: "HTTP 502", status: 502 });
-    const wrapped = new TRPCClientError("Unexpected token", { cause: gateway });
-    expect(formatFailure(toApiFailure(wrapped, "getUserUrls"))).toBe("http: getUserUrls: HTTP 502");
+    const wrapped = toApiFailure(
+      new TRPCClientError("Unexpected token", { cause: gateway }),
+      "getUserUrls",
+    );
+    expect(formatFailure(wrapped)).toBe("http: getUserUrls: HTTP 502");
+    // A tRPC-wrapped gateway failure must keep its status so retry classification works.
+    expect(wrapped).toMatchObject({ status: 502 });
+    expect(isTransient(wrapped)).toBe(true);
+  });
+
+  it("classifies only transport and transient HTTP failures as retryable", () => {
+    expect(isTransient(new HttpFailure({ path: "p", message: "HTTP 401", status: 401 }))).toBe(
+      false,
+    );
+    expect(isTransient(new HttpFailure({ path: "p", message: "HTTP 404", status: 404 }))).toBe(
+      false,
+    );
+    expect(isTransient(new HttpFailure({ path: "p", message: "HTTP 503", status: 503 }))).toBe(
+      true,
+    );
+    expect(isTransient(new HttpFailure({ path: "p", message: "HTTP 429", status: 429 }))).toBe(
+      true,
+    );
+    expect(isTransient(new HttpFailure({ path: "p", message: "gateway" }))).toBe(true);
   });
 
   it("keeps API_URL validation semantics", () => {
@@ -132,6 +155,36 @@ describe("scrape CLI effect program", () => {
     expect(h.out).toContain("stored $24.99");
     expect(h.out).toContain("Done: 1 observations stored, 0 failed.");
     expect(h.calls.closes).toBe(1);
+  });
+
+  it("does not retry deterministic HTTP 4xx failures", async () => {
+    let attempts = 0;
+    const h = harness({
+      getUserUrls: async () => {
+        attempts++;
+        throw new HttpFailure({ path: "", message: "HTTP 401", status: 401 });
+      },
+    });
+
+    expect(await Effect.runPromise(runScrape(h.deps))).toBe(1);
+    expect(attempts).toBe(1);
+    expect(h.err).toContain(
+      "api_failed: could not load scrape targets — http: getUserUrls: HTTP 401",
+    );
+  });
+
+  it("retries transient HTTP 5xx failures up to the named cap", async () => {
+    let attempts = 0;
+    const h = harness({
+      getUserUrls: async () => {
+        attempts++;
+        if (attempts < 3) throw new HttpFailure({ path: "", message: "HTTP 503", status: 503 });
+        return [target];
+      },
+    });
+
+    expect(await Effect.runPromise(runScrape(h.deps))).toBe(0);
+    expect(attempts).toBe(3);
   });
 
   it("does not retry deterministic tRPC failures", async () => {

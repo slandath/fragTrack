@@ -30,6 +30,9 @@ export interface Database {
   readonly db: typeof db;
 }
 export const Database = Context.GenericTag<Database>("fragTrack/Database");
-export const DatabaseLive = Layer.succeed(Database, { db });
+
+/** The single service instance the live layer exposes and the boundary reads. */
+export const liveDatabase: Database = { db };
+export const DatabaseLive = Layer.succeed(Database, liveDatabase);
 
 export const AppLayer = Layer.mergeAll(ConfigLive, DatabaseLive);

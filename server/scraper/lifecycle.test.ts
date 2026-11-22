@@ -157,6 +157,16 @@ describe("scraper browser lifecycle", () => {
     expect(fake.calls.browserClose).toBe(1);
   });
 
+  it("surfaces a browser launch failure as a rejection", async () => {
+    await expect(
+      createScraper({
+        launch: async () => {
+          throw new Error("no chromium");
+        },
+      }),
+    ).rejects.toThrow("no chromium");
+  });
+
   it("makes close idempotent", async () => {
     const fake = fakeLauncher();
     const scraper = await createScraper({ launch: fake.launch });

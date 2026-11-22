@@ -146,17 +146,23 @@ describe("typed scraper errors (Spec 04 taxonomy)", () => {
     }
   });
 
-  it("uses selector_timeout for other selector failures and a null element", async () => {
-    for (const opts of [
-      { selectorError: new Error("strict mode violation") },
-      { missingElement: true },
-    ]) {
-      const { result } = await runProgram(oneUrl(), opts);
-      expect(Either.isLeft(result)).toBe(true);
-      if (Either.isLeft(result)) {
-        expect(result.left._tag).toBe("SelectorTimeout");
-        expect(result.left.category).toBe("selector_timeout");
-      }
+  it("uses selector_timeout for non-timeout selector failures", async () => {
+    const { result } = await runProgram(oneUrl(), {
+      selectorError: new Error("strict mode violation"),
+    });
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("SelectorTimeout");
+      expect(result.left.category).toBe("selector_timeout");
+    }
+  });
+
+  it("treats a null selector match as price_not_found (no matching element)", async () => {
+    const { result } = await runProgram(oneUrl(), { missingElement: true });
+    expect(Either.isLeft(result)).toBe(true);
+    if (Either.isLeft(result)) {
+      expect(result.left._tag).toBe("PriceNotFound");
+      expect(result.left.category).toBe("price_not_found");
     }
   });
 
