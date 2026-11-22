@@ -248,6 +248,15 @@ binaries are needed for those checks.
    existing ad hoc logging. Do not introduce a second log format for the
    Fastify request path in this phase.
 
+Implementation note (Phase 3): `server/env.ts` now uses Effect `Schema` as the
+single validation owner (Zod remains the tRPC input owner). `env-startup.ts`
+calls it once at import; `server/layers.ts` exposes that validated value as a
+`Config` layer and the Drizzle client as a `Database` layer. `server/startup.ts`
+makes Fastify listen/close an `acquireRelease` resource; `server/server.ts` keeps
+one scope open for the process lifetime and closes it on SIGINT/SIGTERM, so
+routes, status codes, and static serving are unchanged. `server/startup.test.ts`
+covers release on scope close and no close after a failed listen.
+
 ## Phase 4: tRPC procedures (evaluation only)
 
 Proceed only if Phases 1–3 land and the PR records a concrete benefit
@@ -325,9 +334,9 @@ If proceeding:
       taxonomy; browser release is proven on success, failure, timeout,
       and interruption (fake-layer close assertions; no Chromium binaries
       in the test environment).
-- [ ] Phase 3: server config validates at startup via an Effect `Config`
-      layer with actionable failures; Fastify/tRPC/better-auth behavior is
-      unchanged; integration tests pass unmodified.
+- [x] Phase 3: server config validates at startup via an Effect `Config`
+      layer with actionable, name-only failures; Fastify/tRPC/better-auth
+      behavior is unchanged; integration tests pass unmodified.
 - [ ] Retry and timeout policies are named, capped, and asserted in tests;
       no unbounded retries exist in adopted code.
 - [ ] No shape is validated by both Zod and `Schema`; each boundary has

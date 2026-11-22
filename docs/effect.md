@@ -32,8 +32,8 @@ reviewable; they apply from Phase 1 onward.
 ## Services, layers, scopes
 
 - Services use `Context.Tag` and are provided through `Layer`. Tests provide fake layers;
-  production provides live layers. Once a `Config`-backed layer exists (Phase 3), no module reads
-  `process.env` directly.
+  production provides live layers. Only the startup config module reads `process.env` (Phase 3);
+  everything else consumes the validated `Config` value.
 - Retries use **named, capped** schedules. Never `Schedule.forever` for network or browser work.
   Retry transient failures only; never retry a deterministic failure or a store write whose
   outcome is ambiguous (double-store risk).
