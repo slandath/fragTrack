@@ -2,7 +2,7 @@ import { defineConfig } from "vitest/config";
 
 export default defineConfig({
   test: {
-    include: ["server/**/*.test.ts", "client/src/**/*.test.ts"],
+    include: ["server/**/*.test.ts", "client/src/**/*.test.ts", "scripts/**/*.test.ts"],
     exclude: ["server/**/*.integration.test.ts", "node_modules/**"],
     environment: "node",
     // Unit tests must never depend on a developer `.env` file or a live
