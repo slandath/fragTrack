@@ -3,6 +3,7 @@ import { Effect } from "effect";
 import { describe, expect, it } from "vitest";
 import {
   HttpFailure,
+  NetworkFailure,
   TrpcFailure,
   formatFailure,
   isTransient,
@@ -114,6 +115,17 @@ describe("typed scrape CLI failures", () => {
     expect(isTransient(wrapped)).toBe(true);
   });
 
+  it("classifies a rejected fetch without HTTP response data as retryable network failure", () => {
+    const fetchRejection = new TRPCClientError("fetch failed", {
+      cause: new TypeError("fetch failed"),
+    });
+    const classified = toApiFailure(fetchRejection, "getUserUrls");
+
+    expect(classified).toBeInstanceOf(NetworkFailure);
+    expect(formatFailure(classified)).toBe("network: getUserUrls: fetch failed");
+    expect(isTransient(classified)).toBe(true);
+  });
+
   it("classifies only transport and transient HTTP failures as retryable", () => {
     expect(isTransient(new HttpFailure({ path: "p", message: "HTTP 401", status: 401 }))).toBe(
       false,
@@ -155,6 +167,22 @@ describe("scrape CLI effect program", () => {
     expect(h.out).toContain("stored $24.99");
     expect(h.out).toContain("Done: 1 observations stored, 0 failed.");
     expect(h.calls.closes).toBe(1);
+  });
+
+  it("retries a rejected fetch up to the named cap", async () => {
+    let attempts = 0;
+    const h = harness({
+      getUserUrls: async () => {
+        attempts++;
+        if (attempts < 3) {
+          throw new TRPCClientError("fetch failed", { cause: new TypeError("fetch failed") });
+        }
+        return [target];
+      },
+    });
+
+    expect(await Effect.runPromise(runScrape(h.deps))).toBe(0);
+    expect(attempts).toBe(3);
   });
 
   it("does not retry deterministic HTTP 4xx failures", async () => {

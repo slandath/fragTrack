@@ -116,6 +116,12 @@ export function toApiFailure(error: unknown, path: string): ApiFailure {
         message: `HTTP ${status}${suffix}: ${error.message}`,
       });
     }
+    // httpLink wraps a rejected fetch in a TRPCClientError with no response
+    // data. That is a transport failure, not a deterministic tRPC error —
+    // classify it as retryable while keeping the operator-facing message.
+    if (status === undefined && code === undefined) {
+      return new NetworkFailure({ path, message: error.message });
+    }
     return new TrpcFailure({ path, code, message: `${error.message}${suffix}` });
   }
   return new NetworkFailure({

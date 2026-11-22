@@ -49,14 +49,18 @@ function fakeBrowser(
     pageClose: 0,
     gotos: 0,
     sleeps: 0,
+    gotoTimeout: undefined as number | undefined,
+    selectorTimeout: undefined as number | undefined,
   };
   const element: PriceElementLike = { textContent: async () => opts.text ?? "$24.99" };
   const page: PageLike = {
-    goto: async () => {
+    goto: async (_url, options) => {
       calls.gotos++;
+      calls.gotoTimeout = options?.timeout;
       if (opts.gotoError) throw opts.gotoError;
     },
-    waitForSelector: async () => {
+    waitForSelector: async (_selector, options) => {
+      calls.selectorTimeout = options?.timeout;
       if (opts.hangOnSelector) return await new Promise<PriceElementLike>(() => {});
       if (opts.selectorError) throw opts.selectorError;
       return opts.missingElement ? null : element;
@@ -164,6 +168,15 @@ describe("typed scraper errors (Spec 04 taxonomy)", () => {
       expect(result.left._tag).toBe("PriceNotFound");
       expect(result.left.category).toBe("price_not_found");
     }
+  });
+
+  it("disables Playwright's own timers so Effect owns the configured deadline", async () => {
+    const { result, fake } = await runProgram(
+      oneUrl({}, { ...FAST, navigationTimeoutMs: 60_000, selectorTimeoutMs: 60_000 }),
+    );
+    expect(Either.isRight(result)).toBe(true);
+    expect(fake.calls.gotoTimeout).toBe(0);
+    expect(fake.calls.selectorTimeout).toBe(0);
   });
 
   it("produces AmbiguousPrice for ambiguous text and BrowserFailed for launch failures", async () => {

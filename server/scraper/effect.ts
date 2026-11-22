@@ -200,12 +200,12 @@ const attempt = (
         (instance) => Effect.promise(() => instance.close().catch(() => {})),
       );
 
-      // Effect.timeoutFail is the single owner of per-phase timeouts. We do
-      // not also set Playwright's `timeout` option: two layers racing would
-      // make the fired category depend on which timer won. The scope release
-      // below closes the page, cancelling the in-flight browser call.
+      // Effect.timeoutFail is the single owner of per-phase timeouts. Passing
+      // Playwright `timeout: 0` *disables* its own timer — omitting it would
+      // silently restore the 30s default and cut short any configured longer
+      // deadline. The scope release closes the page on timeout/interruption.
       yield* Effect.tryPromise({
-        try: () => page.goto(url, { waitUntil: "load" }),
+        try: () => page.goto(url, { waitUntil: "load", timeout: 0 }),
         catch: (error) =>
           new NavigationFailed({
             message: isTimeoutError(error) ? "navigation timeout" : messageOf(error),
@@ -218,7 +218,7 @@ const attempt = (
       );
 
       const element: PriceElementLike | null = yield* Effect.tryPromise({
-        try: () => page.waitForSelector(selector),
+        try: () => page.waitForSelector(selector, { timeout: 0 }),
         catch: (error) =>
           isTimeoutError(error)
             ? new PriceNotFound({ detail: selector })
