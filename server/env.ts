@@ -1,11 +1,12 @@
-// Single validation module for server configuration (Spec 05).
-// Errors list variable *names* only — never values — so a bad secret cannot
-// leak into logs or CI output. Environment-specific requirements are explicit:
-// production is strict, development needs local OAuth settings, and tests only
-// need a database URL. The Drizzle CLI uses `validateDatabaseEnv`, which
-// validates the same database fields without requiring server-only variables.
+// Single validation module for server configuration (Spec 05, Spec 08 Phase 3).
+// Effect Schema owns every boundary shape here. Errors list variable *names*
+// only — never values — so a bad secret cannot leak into logs or CI output.
+// Environment-specific requirements are explicit: production is strict,
+// development needs local OAuth settings, and tests only need a database URL.
+// The Drizzle CLI uses `validateDatabaseEnv`, which validates the same
+// database fields without requiring server-only variables.
 
-import { z } from "zod";
+import { Schema } from "effect";
 
 export type NodeEnv = "development" | "test" | "production";
 
@@ -50,68 +51,82 @@ const REQUIRED: Record<NodeEnv, readonly string[]> = {
   ],
 };
 
-// Documented optional variables that other layers validate themselves:
+// Documented optional variables validated by their own owners:
 // ADMIN_USER_IDS — comma-separated better-auth admin IDs; default empty.
 // PORT — default 3000.
 // API_URL / API_KEY — used by scripts/scrape.ts, which validates them.
 // TEST_DATABASE_URL — used only by the integration-test runner.
 
-const trimmed = (value: unknown): unknown =>
-  typeof value === "string" ? value.trim() || undefined : value;
-
-const optionalText = z.preprocess(trimmed, z.string().optional());
-const modeField = z
-  .string()
-  .default("development")
-  .refine(
-    (value): value is NodeEnv => MODES.includes(value as NodeEnv),
-    "must be development, test, or production",
-  );
-const urlWithProtocols = (protocols: string[], message: string) =>
-  z.string().refine((value) => {
+const modeSchema = Schema.Literal("development", "test", "production");
+const textSchema = Schema.String.pipe(Schema.filter((value) => value.length > 0));
+const httpUrlSchema = Schema.String.pipe(
+  Schema.filter((value) => {
     try {
-      return protocols.includes(new URL(value).protocol);
+      return ["http:", "https:"].includes(new URL(value).protocol);
     } catch {
       return false;
     }
-  }, message);
-const httpUrl = urlWithProtocols(["http:", "https:"], "must be a valid http(s) URL");
-const postgresUrl = urlWithProtocols(
-  ["postgres:", "postgresql:"],
-  "must be a postgres:// or postgresql:// URL",
+  }),
 );
-const httpUrlField = z.preprocess(trimmed, httpUrl.optional());
-const postgresUrlField = z.preprocess(trimmed, postgresUrl.optional());
-
-const databaseSchema = z.object({
-  NODE_ENV: modeField,
-  DATABASE_URL: postgresUrlField,
-  DATABASE_CA_CERT: optionalText,
-  DATABASE_TLS_SERVERNAME: optionalText,
-});
-
-const serverSchema = databaseSchema.extend({
-  BETTER_AUTH_SECRET: optionalText,
-  BETTER_AUTH_URL: httpUrlField,
-  FRONTEND_URL: httpUrlField,
-  GITHUB_CLIENT_ID: optionalText,
-  GITHUB_CLIENT_SECRET: optionalText,
-  ADMIN_USER_IDS: z.preprocess(trimmed, z.string().default("")),
-  PORT: z.preprocess(trimmed, z.coerce.number().int().min(1).max(65535).default(3000)),
-});
+const postgresUrlSchema = Schema.String.pipe(
+  Schema.filter((value) => {
+    try {
+      return ["postgres:", "postgresql:"].includes(new URL(value).protocol);
+    } catch {
+      return false;
+    }
+  }),
+);
+const portSchema = Schema.NumberFromString.pipe(Schema.int(), Schema.between(1, 65535));
 
 interface NamedIssue {
   path: (string | number | symbol)[];
   message: string;
 }
 
-function modeOf(source: NodeJS.ProcessEnv): NodeEnv {
+/** Messages never contain the invalid value, only which variable failed. */
+function messageFor(name: string): string {
+  switch (name) {
+    case "NODE_ENV":
+      return "must be development, test, or production";
+    case "DATABASE_URL":
+      return "must be a postgres:// or postgresql:// URL";
+    case "PORT":
+      return "must be an integer between 1 and 65535";
+    case "BETTER_AUTH_URL":
+    case "FRONTEND_URL":
+      return "must be a valid http(s) URL";
+    default:
+      return "has an invalid value";
+  }
+}
+
+/** Trim strings and treat blank values as absent, matching the old contract. */
+function sanitize(source: NodeJS.ProcessEnv): Record<string, unknown> {
+  const result: Record<string, unknown> = {};
+  for (const [name, value] of Object.entries(source)) {
+    result[name] = typeof value === "string" ? value.trim() || undefined : value;
+  }
+  return result;
+}
+
+function modeOf(source: Record<string, unknown>): NodeEnv {
   const value = source.NODE_ENV;
   return MODES.includes(value as NodeEnv) ? (value as NodeEnv) : "development";
 }
 
-function issuesOf(error: z.ZodError): NamedIssue[] {
-  return error.issues.map((issue) => ({ path: issue.path, message: issue.message }));
+function readField<A, I>(
+  schema: Schema.Schema<A, I, never>,
+  name: string,
+  source: Record<string, unknown>,
+  problems: NamedIssue[],
+): A | undefined {
+  const value = source[name];
+  if (value == null) return undefined;
+  const decoded = Schema.decodeUnknownEither(schema)(value);
+  if (decoded._tag === "Right") return decoded.right;
+  problems.push({ path: [name], message: messageFor(name) });
+  return undefined;
 }
 
 function invalidConfig(mode: NodeEnv, problems: NamedIssue[]): Error {
@@ -124,52 +139,62 @@ function invalidConfig(mode: NodeEnv, problems: NamedIssue[]): Error {
 
 /** Validate the database fields shared by the server and the Drizzle CLI. */
 export function validateDatabaseEnv(source: NodeJS.ProcessEnv = process.env): DatabaseEnv {
-  const mode = modeOf(source);
-  const parsed = databaseSchema.safeParse(source);
-  const problems: NamedIssue[] = parsed.success ? [] : issuesOf(parsed.error);
-  const data = parsed.success ? parsed.data : undefined;
-  if (data && !data.DATABASE_URL) {
-    problems.push({ path: ["DATABASE_URL"], message: `is required in ${mode}` });
+  const clean = sanitize(source);
+  const mode = modeOf(clean);
+  const problems: NamedIssue[] = [];
+  for (const name of REQUIRED[mode]) {
+    if (name === "DATABASE_URL" && clean[name] == null) {
+      problems.push({ path: [name], message: `is required in ${mode}` });
+    }
   }
-  if (!data || problems.length > 0) throw invalidConfig(mode, problems);
 
-  return {
-    nodeEnv: data.NODE_ENV,
-    databaseUrl: data.DATABASE_URL!,
-    databaseCaCert: data.DATABASE_CA_CERT,
-    databaseTlsServername: data.DATABASE_TLS_SERVERNAME,
-  };
+  const nodeEnv = (readField(modeSchema, "NODE_ENV", clean, problems) ?? mode) as NodeEnv;
+  const databaseUrl = readField(postgresUrlSchema, "DATABASE_URL", clean, problems);
+  const databaseCaCert = readField(textSchema, "DATABASE_CA_CERT", clean, problems);
+  const databaseTlsServername = readField(textSchema, "DATABASE_TLS_SERVERNAME", clean, problems);
+  if (problems.length > 0) throw invalidConfig(mode, problems);
+
+  return { nodeEnv, databaseUrl: databaseUrl!, databaseCaCert, databaseTlsServername };
 }
 
 /** Validate a full server environment and return typed values, or throw. */
 export function validateEnv(source: NodeJS.ProcessEnv = process.env): ServerEnv {
-  const mode = modeOf(source);
-  const parsed = serverSchema.safeParse(source);
-  const problems: NamedIssue[] = parsed.success ? [] : issuesOf(parsed.error);
-  const data = parsed.success ? parsed.data : undefined;
-  if (data) {
-    const values = data as Record<string, unknown>;
-    for (const name of REQUIRED[mode]) {
-      if (values[name] == null) {
-        problems.push({ path: [name], message: `is required in ${mode}` });
-      }
-    }
+  const clean = sanitize(source);
+  const mode = modeOf(clean);
+  const problems: NamedIssue[] = [];
+  for (const name of REQUIRED[mode]) {
+    if (clean[name] == null) problems.push({ path: [name], message: `is required in ${mode}` });
   }
-  if (!data || problems.length > 0) throw invalidConfig(mode, problems);
+
+  const nodeEnv = (readField(modeSchema, "NODE_ENV", clean, problems) ?? mode) as NodeEnv;
+  const databaseUrl = readField(postgresUrlSchema, "DATABASE_URL", clean, problems);
+  const databaseCaCert = readField(textSchema, "DATABASE_CA_CERT", clean, problems);
+  const databaseTlsServername = readField(textSchema, "DATABASE_TLS_SERVERNAME", clean, problems);
+  const betterAuthSecret = readField(textSchema, "BETTER_AUTH_SECRET", clean, problems);
+  const betterAuthUrl = readField(httpUrlSchema, "BETTER_AUTH_URL", clean, problems);
+  const frontendUrl = readField(httpUrlSchema, "FRONTEND_URL", clean, problems);
+  const githubClientId = readField(textSchema, "GITHUB_CLIENT_ID", clean, problems);
+  const githubClientSecret = readField(textSchema, "GITHUB_CLIENT_SECRET", clean, problems);
+  const port = readField(portSchema, "PORT", clean, problems) ?? 3000;
+  const adminUserIds =
+    (clean.ADMIN_USER_IDS as string | undefined)
+      ?.split(",")
+      .map((id) => id.trim())
+      .filter(Boolean) ?? [];
+
+  if (problems.length > 0) throw invalidConfig(mode, problems);
 
   return {
-    nodeEnv: data.NODE_ENV,
-    databaseUrl: data.DATABASE_URL!,
-    databaseCaCert: data.DATABASE_CA_CERT,
-    databaseTlsServername: data.DATABASE_TLS_SERVERNAME,
-    betterAuthSecret: data.BETTER_AUTH_SECRET,
-    betterAuthUrl: data.BETTER_AUTH_URL,
-    frontendUrl: data.FRONTEND_URL,
-    githubClientId: data.GITHUB_CLIENT_ID,
-    githubClientSecret: data.GITHUB_CLIENT_SECRET,
-    adminUserIds: data.ADMIN_USER_IDS.split(",")
-      .map((id) => id.trim())
-      .filter(Boolean),
-    port: data.PORT,
+    nodeEnv,
+    databaseUrl: databaseUrl!,
+    databaseCaCert,
+    databaseTlsServername,
+    betterAuthSecret,
+    betterAuthUrl,
+    frontendUrl,
+    githubClientId,
+    githubClientSecret,
+    adminUserIds,
+    port,
   };
 }
