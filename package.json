@@ -15,7 +15,7 @@
     "test:integration": "vitest run --config vitest.integration.config.ts",
     "scrape": "tsx scripts/scrape.ts",
     "lint": "oxlint",
-    "typecheck": "tsc -b tsconfig.build.json --noEmit",
+    "typecheck": "tsc -b tsconfig.build.json --noEmit && tsc -p tsconfig.node.json --noEmit",
     "format": "vp fmt --write .",
     "format:check": "vp fmt --check .",
     "check": "pnpm format:check && pnpm lint && pnpm --filter client lint && pnpm typecheck && pnpm --filter client typecheck && pnpm test"
@@ -27,6 +27,7 @@
     "better-auth": "^1.6.25",
     "dotenv": "^17.4.2",
     "drizzle-orm": "^0.45.2",
+    "effect": "^3.22.5",
     "fastify": "^5.10.0",
     "pg": "^8.22.0",
     "zod": "^4.4.3"

@@ -1,4 +1,4 @@
-import { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
+import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 import { fromNodeHeaders } from "better-auth/node";
 import { and, eq, gt, isNull } from "drizzle-orm";
 import { db } from "../index.js";
