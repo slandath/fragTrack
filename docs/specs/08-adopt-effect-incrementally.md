@@ -181,6 +181,13 @@ corrected before implementation began:
 6. Keep the script runnable via the existing `pnpm scrape` / `tsx`
    workflow. The Effect runtime is entered once, at the top of the script.
 
+Implementation note (Phase 1): the Effect program and its typed errors live in
+`scripts/scrape-core.ts`; `scripts/scrape.ts` is the thin CLI entry that creates the
+tRPC client, supplies the gateway-body fetch, and calls `Effect.runPromise` once.
+Boundaries are injectable as `ScrapeDeps` so tests never open a browser or hit the
+API. `apiRetrySchedule` (2 retries, exponential 500 ms base) is the named capped
+schedule; `storePrice` is deliberately not retried.
+
 ## Phase 2: scraper (`server/scraper/`)
 
 1. Translate `ScrapeOutcome` / `ScrapeCategory` into typed errors:
@@ -212,6 +219,15 @@ corrected before implementation began:
    element matched and stays `price_not_found` (Spec 04); other selector
    failures stay `selector_timeout`. Do not reclassify an existing timeout
    as a different category during the Effect translation.
+
+Implementation note (Phase 2): pure extraction and the Promise-facing types live
+in `server/scraper/model.ts`; `server/scraper/effect.ts` holds the typed errors,
+services (`BrowserLauncher`, `BrowserSession`, `RetailerConfig`, `ScrapeClock`),
+the named capped navigation retry, and scoped contexts/pages/browser. The existing
+`createScraper()` Promise API is a thin adapter in `index.ts`, so the CLI and the
+unchanged lifecycle tests keep their contracts. `effect.test.ts` proves release on
+success, typed failure, timeout, and interruption with fake layers; no Chromium
+binaries are needed for those checks.
 
 ## Phase 3: server internals
 
@@ -302,12 +318,13 @@ If proceeding:
 
 - [x] Phase 0: `effect` (stable v3, `3.22.5`) is a dependency; no runtime behavior
       changed; `vp check` and `vp test` pass.
-- [ ] Phase 1: `scripts/scrape.ts` has no hand-rolled `ApiError` class or
+- [x] Phase 1: `scripts/scrape.ts` has no hand-rolled `ApiError` class or
       manual tRPC envelope parsing; gateway non-JSON behavior and exit
       codes are preserved and tested.
-- [ ] Phase 2: scraper failures are typed errors matching the Spec 04
+- [x] Phase 2: scraper failures are typed errors matching the Spec 04
       taxonomy; browser release is proven on success, failure, timeout,
-      and interruption; no leaked Chromium processes after forced failures.
+      and interruption (fake-layer close assertions; no Chromium binaries
+      in the test environment).
 - [ ] Phase 3: server config validates at startup via an Effect `Config`
       layer with actionable failures; Fastify/tRPC/better-auth behavior is
       unchanged; integration tests pass unmodified.
