@@ -2,15 +2,12 @@ import "dotenv/config";
 // Validate after dotenv loads .env, before modules that read configuration.
 import { Effect, Exit, Scope } from "effect";
 import Fastify from "fastify";
-import fastifyStatic from "@fastify/static";
 import { auth } from "./utils/auth.js";
 import { fromNodeHeaders } from "better-auth/node";
-import { fastifyTRPCPlugin } from "@trpc/server/adapters/fastify";
-import { appRouter } from "./trpc/router.js";
-import { createContext } from "./trpc/context.js";
 import path from "node:path";
 import { fileURLToPath } from "node:url";
 import { AppLayer, Config, Database } from "./layers.js";
+import { registerAppPlugins } from "./plugins.js";
 import { listenScoped } from "./startup.js";
 
 const fastify = Fastify({
@@ -24,19 +21,11 @@ const program = Effect.gen(function* () {
 
   // Fastify, @fastify/static, the tRPC adapter, and the better-auth bridge
   // stay exactly as they were; only wiring moves into the scoped program.
-  if (env.nodeEnv === "production") {
-    const __dirname = path.dirname(fileURLToPath(import.meta.url));
-    const clientDist = path.resolve(__dirname, "../client/dist");
-    yield* Effect.promise(() => fastify.register(fastifyStatic, { root: clientDist }));
-    fastify.setNotFoundHandler((_req, reply) => reply.sendFile("index.html"));
-  }
+  const __dirname = path.dirname(fileURLToPath(import.meta.url));
+  const clientDist =
+    env.nodeEnv === "production" ? path.resolve(__dirname, "../client/dist") : undefined;
 
-  yield* Effect.promise(() =>
-    fastify.register(fastifyTRPCPlugin, {
-      prefix: "/trpc",
-      trpcOptions: { router: appRouter, createContext },
-    }),
-  );
+  yield* registerAppPlugins(fastify, clientDist);
 
   fastify.route({
     method: ["GET", "POST"],
