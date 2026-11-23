@@ -1,51 +1,69 @@
 import type { CreateFastifyContextOptions } from "@trpc/server/adapters/fastify";
 import { fromNodeHeaders } from "better-auth/node";
 import { and, eq, gt, isNull } from "drizzle-orm";
-import { db } from "../index.js";
+import { liveDatabase, type Database } from "../layers.js";
 import { auth } from "../utils/auth.js";
 import { apiKey, user } from "../db/schema.js";
 import { apiKeyHashMatches, parseApiKey } from "../utils/api-key.js";
 
-export const createContext = async ({ req }: CreateFastifyContextOptions) => {
-  const authorization = req.headers.authorization;
-  if (authorization) {
-    const bearer = /^Bearer ([^\s]+)$/.exec(authorization);
-    const parsed = bearer ? parseApiKey(bearer[1]) : null;
+/**
+ * The tRPC boundary consumes the process-wide `Database` layer value rather
+ * than importing the Drizzle singleton directly. Tests can inject a fake
+ * layer value with `makeCreateContext`; procedure bodies are untouched.
+ */
+export const makeCreateContext =
+  (database: Database = liveDatabase) =>
+  async ({ req }: CreateFastifyContextOptions) => {
+    const { db } = database;
+    const authorization = req.headers.authorization;
+    if (authorization) {
+      const bearer = /^Bearer ([^\s]+)$/.exec(authorization);
+      const parsed = bearer ? parseApiKey(bearer[1]) : null;
 
-    if (parsed) {
-      const rows = await db
-        .select({ key: apiKey, user })
-        .from(apiKey)
-        .innerJoin(user, eq(apiKey.userId, user.id))
-        .where(
-          and(eq(apiKey.id, parsed.id), isNull(apiKey.revokedAt), gt(apiKey.expiresAt, new Date())),
-        )
-        .limit(1);
-      const row = rows[0];
-      const activelyBanned =
-        row?.user.banned && (!row.user.banExpires || row.user.banExpires > new Date());
+      if (parsed) {
+        const rows = await db
+          .select({ key: apiKey, user })
+          .from(apiKey)
+          .innerJoin(user, eq(apiKey.userId, user.id))
+          .where(
+            and(
+              eq(apiKey.id, parsed.id),
+              isNull(apiKey.revokedAt),
+              gt(apiKey.expiresAt, new Date()),
+            ),
+          )
+          .limit(1);
+        const row = rows[0];
+        const activelyBanned =
+          row?.user.banned && (!row.user.banExpires || row.user.banExpires > new Date());
 
-      if (row && !activelyBanned && apiKeyHashMatches(parsed.secretHash, row.key.secretHash)) {
-        try {
-          await db.update(apiKey).set({ lastUsedAt: new Date() }).where(eq(apiKey.id, row.key.id));
-        } catch (error) {
-          // Usage telemetry must not reject an authenticated request.
-          console.error("Failed to update API key lastUsedAt:", error);
+        if (row && !activelyBanned && apiKeyHashMatches(parsed.secretHash, row.key.secretHash)) {
+          try {
+            await db
+              .update(apiKey)
+              .set({ lastUsedAt: new Date() })
+              .where(eq(apiKey.id, row.key.id));
+          } catch (error) {
+            // Usage telemetry must not reject an authenticated request.
+            console.error("Failed to update API key lastUsedAt:", error);
+          }
+          return {
+            db,
+            session: { user: row.user, session: null },
+            authType: "api-key" as const,
+          };
         }
-        return {
-          db,
-          session: { user: row.user, session: null },
-          authType: "api-key" as const,
-        };
       }
+
+      // An Authorization header never falls through to cookie sessions.
+      return { db, session: null, authType: "none" as const };
     }
 
-    // An Authorization header never falls through to cookie sessions.
-    return { db, session: null, authType: "none" as const };
-  }
+    const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
+    return { db, session, authType: session?.user ? ("session" as const) : ("none" as const) };
+  };
 
-  const session = await auth.api.getSession({ headers: fromNodeHeaders(req.headers) });
-  return { db, session, authType: session?.user ? ("session" as const) : ("none" as const) };
-};
+/** Default context factory used by the Fastify tRPC adapter. */
+export const createContext = makeCreateContext();
 
 export type Context = Awaited<ReturnType<typeof createContext>>;

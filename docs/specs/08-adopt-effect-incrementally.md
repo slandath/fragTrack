@@ -2,8 +2,9 @@
 
 ## Status
 
-In Progress (Phase 0) — implementation began 2026-11-21; the context below describes the
-state before implementation.
+Phases 0–3 landed on `main` (2026-11-22, PRs #27/#30/#31/#32). Phase 4 is an
+evaluation gate and has not started. The context below describes the state before
+implementation.
 
 ## Priority
 

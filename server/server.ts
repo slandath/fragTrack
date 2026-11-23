@@ -63,21 +63,39 @@ const program = Effect.gen(function* () {
 // until a termination signal closes the scope and releases the listener.
 const main = async () => {
   const scope = await Effect.runPromise(Scope.make());
-  const serving = Effect.runPromise(Effect.provide(Scope.extend(program, scope), AppLayer));
-
   let closing = false;
+  const closeScope = () => Effect.runPromise(Scope.close(scope, Exit.succeed(undefined)));
+
   const shutdown = () => {
     if (closing) return;
     closing = true;
-    void Effect.runPromise(Scope.close(scope, Exit.succeed(undefined))).then(() => process.exit(0));
+    void closeScope().then(
+      () => process.exit(0),
+      (error) => {
+        fastify.log.error(error);
+        process.exit(1);
+      },
+    );
   };
   process.on("SIGINT", shutdown);
   process.on("SIGTERM", shutdown);
+
+  const serving = Effect.runPromise(Effect.provide(Scope.extend(program, scope), AppLayer));
 
   try {
     await serving;
   } catch (err) {
     fastify.log.error(err);
+    // A failed startup can still have acquired resources (e.g. a listener
+    // registered before listen failed); release them before exiting.
+    if (!closing) {
+      closing = true;
+      try {
+        await closeScope();
+      } catch (closeError) {
+        fastify.log.error(closeError);
+      }
+    }
     process.exit(1);
   }
 };

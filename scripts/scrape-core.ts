@@ -44,9 +44,22 @@ export class BrowserLaunchFailure extends Data.TaggedError("BrowserLaunchFailure
 
 export type ApiFailure = NetworkFailure | HttpFailure | TrpcFailure | InvalidResponse;
 
-/** Only transport-level failures are transient. Deterministic tRPC and shape errors are not. */
-export const isTransient = (error: ApiFailure): boolean =>
-  error._tag === "NetworkFailure" || error._tag === "HttpFailure";
+/**
+ * Only transport-level failures are transient. Deterministic tRPC and shape
+ * errors are not, and neither are known client-side HTTP failures (4xx):
+ * retrying a 401/404 cannot change the outcome and only adds load.
+ */
+export const isTransient = (error: ApiFailure): boolean => {
+  if (error._tag === "NetworkFailure") return true;
+  if (error._tag !== "HttpFailure") return false;
+  const { status } = error;
+  return (
+    status === undefined || // gateway/transport failure with no HTTP status
+    status === 408 || // request timeout
+    status === 429 || // rate limited
+    status >= 500 // server-side failure
+  );
+};
 
 const FAILURE_KIND: Record<ApiFailure["_tag"], string> = {
   NetworkFailure: "network",
@@ -82,7 +95,14 @@ export function toApiFailure(error: unknown, path: string): ApiFailure {
   }
   if (error instanceof TRPCClientError) {
     if (error.cause instanceof HttpFailure) {
-      return new HttpFailure({ path, message: error.cause.message });
+      // tRPC may wrap the gateway failure thrown by the custom fetch. Carry
+      // the status/code through so the retry policy can classify it.
+      return new HttpFailure({
+        path,
+        message: error.cause.message,
+        status: error.cause.status,
+        code: error.cause.code,
+      });
     }
     const status = error.data?.httpStatus;
     const data = error.data?.code;
@@ -95,6 +115,12 @@ export function toApiFailure(error: unknown, path: string): ApiFailure {
         code,
         message: `HTTP ${status}${suffix}: ${error.message}`,
       });
+    }
+    // httpLink wraps a rejected fetch in a TRPCClientError with no response
+    // data. That is a transport failure, not a deterministic tRPC error —
+    // classify it as retryable while keeping the operator-facing message.
+    if (status === undefined && code === undefined) {
+      return new NetworkFailure({ path, message: error.message });
     }
     return new TrpcFailure({ path, code, message: `${error.message}${suffix}` });
   }

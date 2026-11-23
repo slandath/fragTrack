@@ -63,15 +63,17 @@ export interface ScrapeSettings {
   retries: number;
   retryDelayMs: number;
 }
+
+/** Named, capped retry policy: transient navigation failures only. */
+export const NAVIGATION_RETRY_ATTEMPTS = DEFAULT_RETRIES;
+
 export const settingsFrom = (options: ScraperOptions = {}): ScrapeSettings => ({
   navigationTimeoutMs: options.navigationTimeoutMs ?? DEFAULT_NAVIGATION_TIMEOUT_MS,
   selectorTimeoutMs: options.selectorTimeoutMs ?? DEFAULT_SELECTOR_TIMEOUT_MS,
-  retries: options.retries ?? DEFAULT_RETRIES,
+  retries: options.retries ?? NAVIGATION_RETRY_ATTEMPTS,
   retryDelayMs: options.retryDelayMs ?? DEFAULT_RETRY_DELAY_MS,
 });
 
-/** Named, capped retry policy: transient navigation failures only. */
-export const NAVIGATION_RETRY_ATTEMPTS = 2;
 export const navigationRetrySchedule = (settings: ScrapeSettings) =>
   Schedule.intersect(
     Schedule.exponential(Duration.millis(settings.retryDelayMs), 2),
@@ -198,8 +200,12 @@ const attempt = (
         (instance) => Effect.promise(() => instance.close().catch(() => {})),
       );
 
+      // Effect.timeoutFail is the single owner of per-phase timeouts. Passing
+      // Playwright `timeout: 0` *disables* its own timer — omitting it would
+      // silently restore the 30s default and cut short any configured longer
+      // deadline. The scope release closes the page on timeout/interruption.
       yield* Effect.tryPromise({
-        try: () => page.goto(url, { waitUntil: "load", timeout: settings.navigationTimeoutMs }),
+        try: () => page.goto(url, { waitUntil: "load", timeout: 0 }),
         catch: (error) =>
           new NavigationFailed({
             message: isTimeoutError(error) ? "navigation timeout" : messageOf(error),
@@ -212,7 +218,7 @@ const attempt = (
       );
 
       const element: PriceElementLike | null = yield* Effect.tryPromise({
-        try: () => page.waitForSelector(selector, { timeout: settings.selectorTimeoutMs }),
+        try: () => page.waitForSelector(selector, { timeout: 0 }),
         catch: (error) =>
           isTimeoutError(error)
             ? new PriceNotFound({ detail: selector })
@@ -223,7 +229,9 @@ const attempt = (
           onTimeout: () => new PriceNotFound({ detail: selector }),
         }),
       );
-      if (!element) return yield* Effect.fail(new SelectorTimeout({ detail: selector }));
+      // No element matched the price selector: Spec 04 classifies this as
+      // price_not_found, not selector_timeout.
+      if (!element) return yield* Effect.fail(new PriceNotFound({ detail: selector }));
 
       const text = yield* Effect.tryPromise({
         try: () => element.textContent(),

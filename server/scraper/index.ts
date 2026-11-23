@@ -1,4 +1,4 @@
-import { Effect, Either } from "effect";
+import { Effect, Either, Exit, Scope } from "effect";
 import type { ScrapeOutcome, Scraper, ScraperOptions } from "./model.js";
 import { BrowserLauncher, BrowserSession, makeLayers, scrapeUrl, settingsFrom } from "./effect.js";
 
@@ -9,19 +9,27 @@ export * from "./model.js";
  * boundary: public signatures keep their existing Promise/plain types, while
  * typed errors, scoped pages/contexts, and services live in `effect.ts`.
  *
- * One browser is acquired per run and closed by `close()` (Spec 04). Per-URL
- * pages/contexts are released by Effect scopes even on failure or timeout.
+ * One browser is acquired per run and closed by `close()` (Spec 04). It is
+ * acquired into a real `Scope` — the same scoped-resource path as
+ * `withBrowserSession` — so release is guaranteed when that scope closes,
+ * including on failure and interruption. The scope stays open across
+ * `scrape()` calls because the Promise API must remain stateful.
  */
 export async function createScraper(options: ScraperOptions = {}): Promise<Scraper> {
   const settings = settingsFrom(options);
   const layers = makeLayers(options);
 
-  // The browser itself is acquired here so it survives across `scrape` calls;
-  // `withBrowserSession` in effect.ts is the scoped equivalent for run-level
-  // callers and is covered by forced-failure tests.
+  const scope = await Effect.runPromise(Scope.make());
   const browser = await Effect.runPromise(
-    Effect.flatMap(BrowserLauncher, (launcher) => launcher.launch).pipe(Effect.provide(layers)),
-  );
+    Effect.acquireRelease(
+      Effect.flatMap(BrowserLauncher, (launcher) => launcher.launch),
+      (instance) => Effect.promise(() => instance.close()),
+    ).pipe(Effect.provide(layers), Scope.extend(scope)),
+  ).catch(async (error: unknown) => {
+    // Nothing was acquired, but the scope itself still needs closing.
+    await Effect.runPromise(Scope.close(scope, Exit.succeed(undefined)));
+    throw error;
+  });
 
   const runUrl = (url: string) =>
     Effect.provideService(scrapeUrl(url, settings), BrowserSession, { browser }).pipe(
@@ -42,7 +50,7 @@ export async function createScraper(options: ScraperOptions = {}): Promise<Scrap
     async close(): Promise<void> {
       if (closed) return;
       closed = true;
-      await browser.close();
+      await Effect.runPromise(Scope.close(scope, Exit.succeed(undefined)));
     },
   };
 }
