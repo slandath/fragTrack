@@ -28,6 +28,8 @@ func (s *server) routes() *http.ServeMux {
 	mux.HandleFunc("POST /fragrances", s.createFragrance)
 	mux.HandleFunc("POST /fragrances/{id}/edit", s.editFragrance)
 	mux.HandleFunc("POST /fragrances/{id}/delete", s.deleteFragrance)
+	mux.HandleFunc("POST /fragrances/{id}/links", s.addLink)
+	mux.HandleFunc("POST /fragrances/{id}/links/{linkID}/delete", s.deleteLink)
 	mux.HandleFunc("POST /api/fragrances/{id}/refresh-prices", s.startRefresh)
 	mux.HandleFunc("GET /api/refreshes/{jobID}/events", s.refreshEvents)
 	mux.HandleFunc("GET /static/app.js", s.appJS)
@@ -71,7 +73,8 @@ type buyRow struct {
 }
 
 type buyData struct {
-	Rows []buyRow
+	Rows            []buyRow
+	RetailerOptions []RetailerConfig
 }
 
 func (s *server) buyPage(w http.ResponseWriter, r *http.Request) {
@@ -81,7 +84,7 @@ func (s *server) buyPage(w http.ResponseWriter, r *http.Request) {
 		http.Error(w, "list fragrances", http.StatusInternalServerError)
 		return
 	}
-	data := buyData{}
+	data := buyData{RetailerOptions: retailerConfigs}
 	for _, f := range fragrances {
 		links, err := s.store.LinksForFragrance(f.ID)
 		if err != nil {
@@ -167,6 +170,43 @@ func (s *server) editFragrance(w http.ResponseWriter, r *http.Request) {
 		return
 	}
 	http.Redirect(w, r, "/", http.StatusSeeOther)
+}
+
+// addLink adds (or replaces) one retailer URL for a fragrance, without
+// a full edit. The new link starts never-checked.
+func (s *server) addLink(w http.ResponseWriter, r *http.Request) {
+	id := r.PathValue("id")
+	retailer := r.FormValue("retailer")
+	url := r.FormValue("url")
+	if _, ok := retailerByName(retailer); !ok || url == "" {
+		http.Error(w, "retailer and url are required", http.StatusBadRequest)
+		return
+	}
+	f, err := s.store.GetFragrance(id)
+	if err != nil {
+		http.Error(w, "get fragrance", http.StatusInternalServerError)
+		return
+	}
+	if f == nil {
+		http.NotFound(w, r)
+		return
+	}
+	link := RetailerLink{ID: newID(), Retailer: retailer, URL: url}
+	if err := s.store.AddLink(id, link); err != nil {
+		http.Error(w, "add link", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/buy", http.StatusSeeOther)
+}
+
+// deleteLink removes one retailer URL from a fragrance. Removing the
+// last link is fine; the fragrance remains with no links.
+func (s *server) deleteLink(w http.ResponseWriter, r *http.Request) {
+	if err := s.store.DeleteLink(r.PathValue("linkID")); err != nil {
+		http.Error(w, "delete link", http.StatusInternalServerError)
+		return
+	}
+	http.Redirect(w, r, "/buy", http.StatusSeeOther)
 }
 
 func (s *server) deleteFragrance(w http.ResponseWriter, r *http.Request) {

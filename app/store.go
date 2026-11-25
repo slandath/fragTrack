@@ -17,6 +17,8 @@ type Store interface {
 	CreateFragrance(f Fragrance, links []RetailerLink) error
 	UpdateFragrance(f Fragrance, links []RetailerLink) error
 	DeleteFragrance(id string) error
+	AddLink(fragranceID string, link RetailerLink) error
+	DeleteLink(linkID string) error
 	LinksForFragrance(fragranceID string) ([]RetailerLink, error)
 	RecordAttempt(linkID string, at time.Time, status string) error
 	RecordSuccess(linkID string, at time.Time, priceMinor int64, currency string) error
@@ -169,6 +171,27 @@ func insertLinks(tx *sql.Tx, fragranceID string, links []RetailerLink) error {
 
 func (s *sqliteStore) DeleteFragrance(id string) error {
 	_, err := s.db.Exec(`DELETE FROM fragrances WHERE id = ?`, id)
+	return err
+}
+
+// AddLink adds one retailer URL to a fragrance. If the fragrance
+// already has a link for that retailer, the URL is replaced and the
+// previous snapshot (price, freshness) is cleared, so a stale price
+// is never shown for a new URL.
+func (s *sqliteStore) AddLink(fragranceID string, link RetailerLink) error {
+	return s.tx(func(tx *sql.Tx) error {
+		if _, err := tx.Exec(`DELETE FROM retailer_links WHERE fragrance_id = ? AND retailer = ?`,
+			fragranceID, link.Retailer); err != nil {
+			return err
+		}
+		_, err := tx.Exec(`INSERT INTO retailer_links(id, fragrance_id, retailer, url, link_status)
+			VALUES(?, ?, ?, ?, 'never-checked')`, link.ID, fragranceID, link.Retailer, link.URL)
+		return err
+	})
+}
+
+func (s *sqliteStore) DeleteLink(linkID string) error {
+	_, err := s.db.Exec(`DELETE FROM retailer_links WHERE id = ?`, linkID)
 	return err
 }
 
