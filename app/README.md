@@ -44,9 +44,12 @@ and stored in the database.
 
 ## Deploy (Railway)
 
-Nixpacks detects `go.mod` and builds the app; no Dockerfile. Set the
-build/start commands to the package root (`app/`) if the service is
-created from the repo root, and mount the volume at the app's data
-directory. PR Environments and Bot PR Environments provide per-PR
-previews; verify health plus one API round-trip (add, refresh, delete)
-on the preview before merging.
+The service builds from `app/Dockerfile` (multi-stage: the Go module
+is compiled in a builder stage, then a small runtime image is shipped).
+A Dockerfile is required per service because the repo root also
+contains the legacy Node app, so the monorepo default build would pick
+Node instead of Go. Set the service's Dockerfile path to
+`app/Dockerfile`, mount the volume at the app's data directory, and
+export `APP_SECRET`. PR Environments and Bot PR Environments provide
+per-PR previews; verify health plus one API round-trip (add, refresh,
+delete) on the preview before merging.
