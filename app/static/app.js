@@ -6,8 +6,12 @@ const fmtTime = (s) => (s ? s.replace("T", " ").slice(0, 16) : "never");
 
 function statusText(ev) {
   if (ev.status === "ok") return "confirmed " + fmtTime(ev.lastSuccessAt);
-  if (ev.status === "failed") return "price from " + fmtTime(ev.lastSuccessAt) + ", refresh failed " + fmtTime(ev.lastAttemptAt);
-  if (ev.status === "blocked") return "price from " + fmtTime(ev.lastSuccessAt) + ", blocked " + fmtTime(ev.lastAttemptAt);
+  if (ev.status === "failed")
+    return (
+      "price from " + fmtTime(ev.lastSuccessAt) + ", refresh failed " + fmtTime(ev.lastAttemptAt)
+    );
+  if (ev.status === "blocked")
+    return "price from " + fmtTime(ev.lastSuccessAt) + ", blocked " + fmtTime(ev.lastAttemptAt);
   return "no check yet";
 }
 
@@ -22,7 +26,9 @@ async function runCompare(fragranceID) {
   if (!table) return;
   statusLine.textContent = "Checking all retailers…";
 
-  const resp = await fetch("/api/fragrances/" + fragranceID + "/refresh-prices", { method: "POST" });
+  const resp = await fetch("/api/fragrances/" + fragranceID + "/refresh-prices", {
+    method: "POST",
+  });
   if (!resp.ok) {
     statusLine.textContent = "Could not start a refresh.";
     return;

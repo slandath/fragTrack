@@ -14,12 +14,12 @@ as a cookie. Every route except `GET /healthz` returns 401 without it.
 
 ## Environment
 
-| Variable     | Required | What it does                                      |
-| ------------ | -------- | ------------------------------------------------- |
-| `PORT`       | No       | Port to listen on (default `3000`).               |
+| Variable     | Required | What it does                                                                                                                  |
+| ------------ | -------- | ----------------------------------------------------------------------------------------------------------------------------- |
+| `PORT`       | No       | Port to listen on (default `3000`).                                                                                           |
 | `DATA_PATH`  | No       | SQLite file path (default `./data/fragtrack.db`). On Railway, point this at the volume mount (e.g. `/app/data/fragtrack.db`). |
-| `APP_SECRET` | Yes      | Shared secret gating every non-health route.      |
-| `BACKUP_DIR` | No       | Where timestamped checkpointed copies go (default `<data dir>/backups`). Empty disables. |
+| `APP_SECRET` | Yes      | Shared secret gating every non-health route.                                                                                  |
+| `BACKUP_DIR` | No       | Where timestamped checkpointed copies go (default `<data dir>/backups`). Empty disables.                                      |
 
 ## Data and backups
 
