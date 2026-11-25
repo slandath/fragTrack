@@ -4,6 +4,7 @@ import (
 	"context"
 	"net/http"
 	"net/http/httptest"
+	"net/url"
 	"strings"
 	"testing"
 	"time"
@@ -66,6 +67,67 @@ func TestHandlerFlow(t *testing.T) {
 	}
 	if !strings.Contains(rec.Body.String(), "USD 110.00") {
 		t.Fatalf("buy after refresh missing price: %s", rec.Body.String())
+	}
+}
+
+func TestLinkManagementHandlers(t *testing.T) {
+	s := newTestStore(t)
+	f := Fragrance{ID: "f1", Brand: "Creed", Name: "Aventus", SizeMl: 100}
+	if err := s.CreateFragrance(f, []RetailerLink{{ID: "l1", Retailer: "FragranceNet", URL: "https://example.com/a"}}); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	srv := newServer(s, &fakeFetcher{minor: 1}, mustTemplates())
+	handler := requireSecret("s3cret", srv.routes())
+
+	call := func(method, target string, form url.Values) *httptest.ResponseRecorder {
+		var req *http.Request
+		if form != nil {
+			req = httptest.NewRequest(method, target+"?key=s3cret", strings.NewReader(form.Encode()))
+			req.Header.Set("Content-Type", "application/x-www-form-urlencoded")
+		} else {
+			req = httptest.NewRequest(method, target+"?key=s3cret", nil)
+		}
+		rec := httptest.NewRecorder()
+		handler.ServeHTTP(rec, req)
+		return rec
+	}
+
+	// Add a second retailer link to the existing fragrance.
+	rec := call(http.MethodPost, "/fragrances/f1/links", url.Values{
+		"retailer": {"FragranceX"},
+		"url":      {"https://example.com/b"},
+	})
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("add link: %d %s", rec.Code, rec.Body.String())
+	}
+	links, _ := s.LinksForFragrance("f1")
+	if len(links) != 2 {
+		t.Fatalf("expected 2 links, got %+v", links)
+	}
+
+	// Remove one of them by id.
+	var secondID string
+	for _, l := range links {
+		if l.Retailer == "FragranceX" {
+			secondID = l.ID
+		}
+	}
+	rec = call(http.MethodPost, "/fragrances/f1/links/"+secondID+"/delete", nil)
+	if rec.Code != http.StatusSeeOther {
+		t.Fatalf("delete link: %d", rec.Code)
+	}
+	links, _ = s.LinksForFragrance("f1")
+	if len(links) != 1 || links[0].Retailer != "FragranceNet" {
+		t.Fatalf("after delete: %+v", links)
+	}
+
+	// Unknown retailer and empty URL are rejected.
+	rec = call(http.MethodPost, "/fragrances/f1/links", url.Values{
+		"retailer": {"Nope"},
+		"url":      {"https://example.com/c"},
+	})
+	if rec.Code != http.StatusBadRequest {
+		t.Fatalf("unknown retailer: %d", rec.Code)
 	}
 }
 

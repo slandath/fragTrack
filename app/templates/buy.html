@@ -49,9 +49,17 @@
                   <td>{{ .Retailer }}</td>
                   <td data-price-cell>{{ formatPrice . }}</td>
                   <td data-fresh-cell>{{ rowStatus . }}</td>
-                  <td>
+                  <td class="text-nowrap">
                     {{ if .URL }}<a href="{{ .URL }}" target="_blank" rel="noopener">Open</a>{{ end
                     }}
+                    <form
+                      method="post"
+                      action="/fragrances/{{ $.Fragrance.ID }}/links/{{ .ID }}/delete"
+                      class="d-inline"
+                      onsubmit="return confirm('Remove this retailer link?');"
+                    >
+                      <button class="btn btn-sm btn-outline-danger" type="submit">Remove</button>
+                    </form>
                   </td>
                 </tr>
                 {{ else }}
@@ -69,6 +77,35 @@
             aria-live="polite"
             data-status-line="{{ .Fragrance.ID }}"
           ></p>
+          <form method="post" action="/fragrances/{{ .Fragrance.ID }}/links" class="mt-2">
+            <div class="row g-2 align-items-center">
+              <div class="col-auto">
+                <label class="visually-hidden" for="retailer-{{ .Fragrance.ID }}">Retailer</label>
+                <select
+                  class="form-select form-select-sm"
+                  id="retailer-{{ .Fragrance.ID }}"
+                  name="retailer"
+                >
+                  {{ range $.RetailerOptions }}
+                  <option value="{{ .Name }}">{{ .Name }}</option>
+                  {{ end }}
+                </select>
+              </div>
+              <div class="col">
+                <label class="visually-hidden" for="url-{{ .Fragrance.ID }}">Retailer URL</label>
+                <input
+                  class="form-control form-control-sm"
+                  id="url-{{ .Fragrance.ID }}"
+                  name="url"
+                  placeholder="https://…"
+                  required
+                />
+              </div>
+              <div class="col-auto">
+                <button class="btn btn-outline-primary btn-sm" type="submit">Add link</button>
+              </div>
+            </div>
+          </form>
         </div>
       </div>
       {{ end }} {{ else }}

@@ -77,6 +77,55 @@ func TestStoreFreshnessSemantics(t *testing.T) {
 	}
 }
 
+func TestStoreAddRemoveLink(t *testing.T) {
+	s := newTestStore(t)
+	f := Fragrance{ID: "f1", Brand: "Creed", Name: "Aventus", SizeMl: 100}
+	if err := s.CreateFragrance(f, nil); err != nil {
+		t.Fatalf("create: %v", err)
+	}
+	// Add a first link after creation.
+	if err := s.AddLink("f1", RetailerLink{ID: "l1", Retailer: "FragranceNet", URL: "https://example.com/a"}); err != nil {
+		t.Fatalf("add link: %v", err)
+	}
+	links, _ := s.LinksForFragrance("f1")
+	if len(links) != 1 || links[0].LinkStatus != "never-checked" {
+		t.Fatalf("after add: %+v", links)
+	}
+	// Adding the same retailer replaces the URL and clears the old
+	// snapshot instead of duplicating the row or keeping a stale price.
+	at := time.Date(2026, 11, 24, 12, 0, 0, 0, time.UTC)
+	_ = s.RecordSuccess("l1", at, 11000, "USD")
+	if err := s.AddLink("f1", RetailerLink{ID: "l2", Retailer: "FragranceNet", URL: "https://example.com/b"}); err != nil {
+		t.Fatalf("replace link: %v", err)
+	}
+	links, _ = s.LinksForFragrance("f1")
+	if len(links) != 1 || links[0].URL != "https://example.com/b" || links[0].LastPriceMinor != nil {
+		t.Fatalf("after replace: %+v", links)
+	}
+	// Add a second retailer, then remove it; the first stays.
+	if err := s.AddLink("f1", RetailerLink{ID: "l3", Retailer: "FragranceX", URL: "https://example.com/c"}); err != nil {
+		t.Fatalf("add second link: %v", err)
+	}
+	if err := s.DeleteLink("l3"); err != nil {
+		t.Fatalf("delete link: %v", err)
+	}
+	links, _ = s.LinksForFragrance("f1")
+	if len(links) != 1 || links[0].Retailer != "FragranceNet" {
+		t.Fatalf("after remove: %+v", links)
+	}
+	// Removing the last link leaves the fragrance with no links.
+	if err := s.DeleteLink("l2"); err != nil {
+		t.Fatalf("delete last link: %v", err)
+	}
+	links, _ = s.LinksForFragrance("f1")
+	if len(links) != 0 {
+		t.Fatalf("expected no links: %+v", links)
+	}
+	if _, err := s.GetFragrance("f1"); err != nil {
+		t.Fatalf("fragrance must survive link deletion: %v", err)
+	}
+}
+
 func TestStoreVersionGuard(t *testing.T) {
 	s := newTestStore(t)
 	if _, err := s.db.Exec(`UPDATE meta SET value = ? WHERE key = 'version'`, schemaVersion+1); err != nil {
