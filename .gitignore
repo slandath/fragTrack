@@ -36,5 +36,3 @@ lerna-debug.log*
 # Go build output and local data
 app/data/
 app/*.db
-
-/app/fragtrack
