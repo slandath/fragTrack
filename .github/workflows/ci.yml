@@ -32,7 +32,7 @@ jobs:
       TEST_DATABASE_URL: postgresql://postgres:postgres@localhost:5432/fragtest?sslmode=disable
 
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
       - uses: pnpm/action-setup@v6
