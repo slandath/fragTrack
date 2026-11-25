@@ -44,7 +44,7 @@
                 </tr>
               </thead>
               <tbody>
-                {{ range .Links }}
+                {{ $fid := .Fragrance.ID }} {{ range .Links }}
                 <tr data-retailer="{{ .Retailer }}">
                   <td>{{ .Retailer }}</td>
                   <td data-price-cell>{{ formatPrice . }}</td>
@@ -54,7 +54,7 @@
                     }}
                     <form
                       method="post"
-                      action="/fragrances/{{ $.Fragrance.ID }}/links/{{ .ID }}/delete"
+                      action="/fragrances/{{ $fid }}/links/{{ .ID }}/delete"
                       class="d-inline"
                       onsubmit="return confirm('Remove this retailer link?');"
                     >
@@ -65,7 +65,7 @@
                 {{ else }}
                 <tr>
                   <td colspan="4" class="text-muted">
-                    No retailer links yet. <a href="/fragrance/{{ $.Fragrance.ID }}">Add links</a>
+                    No retailer links yet. <a href="/fragrance/{{ $fid }}">Add links</a>
                   </td>
                 </tr>
                 {{ end }}
