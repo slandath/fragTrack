@@ -59,6 +59,7 @@ type RefreshEvent struct {
 	PriceCurrency string `json:"priceCurrency,omitempty"`
 	LastSuccessAt string `json:"lastSuccessAt,omitempty"`
 	LastAttemptAt string `json:"lastAttemptAt,omitempty"`
+	FailureReason string `json:"failureReason,omitempty"`
 }
 
 type refreshJob struct {
@@ -116,8 +117,9 @@ func runRefresh(store Store, fetch Fetcher, fragranceID string, job *refreshJob)
 			defer wg.Done()
 			cfg, ok := retailerByName(link.Retailer)
 			if !ok {
-				_ = store.RecordAttempt(link.ID, time.Now().UTC(), "failed")
-				job.events <- RefreshEvent{Retailer: link.Retailer, Status: "failed", LastAttemptAt: time.Now().UTC().Format(time.RFC3339)}
+				now := time.Now().UTC()
+				_ = store.RecordAttempt(link.ID, now, "failed", "unsupported retailer")
+				job.events <- RefreshEvent{Retailer: link.Retailer, Status: "failed", LastAttemptAt: now.Format(time.RFC3339), FailureReason: "unsupported retailer"}
 				return
 			}
 			attemptAt := time.Now().UTC()
@@ -128,11 +130,13 @@ func runRefresh(store Store, fetch Fetcher, fragranceID string, job *refreshJob)
 				if convertToBlocked(ferr, &be) {
 					status = "blocked"
 				}
-				_ = store.RecordAttempt(link.ID, attemptAt, status)
+				reason := ferr.Error()
+				_ = store.RecordAttempt(link.ID, attemptAt, status, reason)
 				job.events <- RefreshEvent{
 					Retailer:      link.Retailer,
 					Status:        status,
 					LastAttemptAt: attemptAt.Format(time.RFC3339),
+					FailureReason: reason,
 				}
 				return
 			}

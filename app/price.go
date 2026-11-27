@@ -29,10 +29,17 @@ func parseRetailerPrice(body []byte, cfg RetailerConfig) (int64, string, error) 
 	}
 	node := matches[0]
 	text := strings.TrimSpace(nodeText(node))
-	match := pricePattern.FindString(text)
-	if match == "" {
+	found := pricePattern.FindAllString(text, -1)
+	if len(found) == 0 {
 		return 0, "", fmt.Errorf("no price in %q", text)
 	}
+	// Ambiguous text (sale + regular, ranges) must never confirm a
+	// wrong-but-plausible amount. The selector owns narrowing; this
+	// guard fails closed when it does not.
+	if len(found) > 1 {
+		return 0, "", fmt.Errorf("ambiguous prices %q in %q", found, text)
+	}
+	match := found[0]
 	clean := strings.ReplaceAll(match, ",", "")
 	var dollars float64
 	if _, err := fmt.Sscanf(clean, "%f", &dollars); err != nil {
