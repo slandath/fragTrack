@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"html/template"
 	"net/http"
+	"strings"
 	"time"
 )
 
@@ -120,30 +121,30 @@ func (s *server) detailPage(w http.ResponseWriter, r *http.Request) {
 }
 
 func formLinks(r *http.Request) []RetailerLink {
-	var links []RetailerLink
-	for _, cfg := range retailerConfigs {
-		url := r.FormValue("url_" + cfg.Domain)
-		if url == "" {
-			continue
-		}
-		links = append(links, RetailerLink{
-			ID:       newID(),
-			Retailer: cfg.Name,
-			URL:      url,
-		})
-	}
+	_, links, _ := validateFragranceForm(r)
 	return links
 }
 
+func writeValidationErrors(w http.ResponseWriter, errs []string) {
+	w.Header().Set("Content-Type", "text/plain; charset=utf-8")
+	w.WriteHeader(http.StatusBadRequest)
+	_, _ = w.Write([]byte("invalid submission: " + strings.Join(errs, "; ")))
+}
+
 func (s *server) createFragrance(w http.ResponseWriter, r *http.Request) {
+	sizeMl, links, errs := validateFragranceForm(r)
+	if len(errs) > 0 {
+		writeValidationErrors(w, errs)
+		return
+	}
 	f := Fragrance{
 		ID:     newID(),
-		Brand:  r.FormValue("brand"),
-		Name:   r.FormValue("name"),
-		SizeMl: atoi(r.FormValue("size_ml")),
+		Brand:  strings.TrimSpace(r.FormValue("brand")),
+		Name:   strings.TrimSpace(r.FormValue("name")),
+		SizeMl: sizeMl,
 		Owned:  r.FormValue("owned") == "true",
 	}
-	if err := s.store.CreateFragrance(f, formLinks(r)); err != nil {
+	if err := s.store.CreateFragrance(f, links); err != nil {
 		http.Error(w, "create fragrance", http.StatusInternalServerError)
 		return
 	}
@@ -161,11 +162,16 @@ func (s *server) editFragrance(w http.ResponseWriter, r *http.Request) {
 		http.NotFound(w, r)
 		return
 	}
-	f.Brand = r.FormValue("brand")
-	f.Name = r.FormValue("name")
-	f.SizeMl = atoi(r.FormValue("size_ml"))
+	sizeMl, links, errs := validateFragranceForm(r)
+	if len(errs) > 0 {
+		writeValidationErrors(w, errs)
+		return
+	}
+	f.Brand = strings.TrimSpace(r.FormValue("brand"))
+	f.Name = strings.TrimSpace(r.FormValue("name"))
+	f.SizeMl = sizeMl
 	f.Owned = r.FormValue("owned") == "true"
-	if err := s.store.UpdateFragrance(*f, formLinks(r)); err != nil {
+	if err := s.store.UpdateFragrance(*f, links); err != nil {
 		http.Error(w, "update fragrance", http.StatusInternalServerError)
 		return
 	}
@@ -177,11 +183,17 @@ func (s *server) editFragrance(w http.ResponseWriter, r *http.Request) {
 func (s *server) addLink(w http.ResponseWriter, r *http.Request) {
 	id := r.PathValue("id")
 	retailer := r.FormValue("retailer")
-	url := r.FormValue("url")
-	if _, ok := retailerByName(retailer); !ok || url == "" {
+	rawURL := r.FormValue("url")
+	if _, ok := retailerByName(retailer); !ok || strings.TrimSpace(rawURL) == "" {
 		http.Error(w, "retailer and url are required", http.StatusBadRequest)
 		return
 	}
+	clean, ok := validateRetailerURL(rawURL)
+	if !ok {
+		http.Error(w, "url: must be a valid http(s) URL", http.StatusBadRequest)
+		return
+	}
+	url := clean
 	f, err := s.store.GetFragrance(id)
 	if err != nil {
 		http.Error(w, "get fragrance", http.StatusInternalServerError)

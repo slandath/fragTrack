@@ -18,9 +18,30 @@ function statusText(ev) {
   return "no check yet";
 }
 
+function currencySymbol(code) {
+  switch (code) {
+    case "USD":
+      return "$";
+    case "EUR":
+      return "€";
+    case "GBP":
+      return "£";
+    case "JPY":
+      return "¥";
+    case "CAD":
+      return "CA$";
+    case "AUD":
+      return "A$";
+    case "CHF":
+      return "CHF ";
+    default:
+      return (code || "USD") + " ";
+  }
+}
+
 function priceText(ev) {
   if (ev.priceMinor == null) return "—";
-  return (ev.priceCurrency || "USD") + " " + (ev.priceMinor / 100).toFixed(2);
+  return currencySymbol(ev.priceCurrency) + (ev.priceMinor / 100).toFixed(2);
 }
 
 async function runCompare(fragranceID) {
