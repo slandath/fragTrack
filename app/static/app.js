@@ -19,7 +19,8 @@ function statusText(ev) {
 }
 
 function currencySymbol(code) {
-  switch (code) {
+  const c = code || "USD";
+  switch (c) {
     case "USD":
       return "$";
     case "EUR":
@@ -35,7 +36,7 @@ function currencySymbol(code) {
     case "CHF":
       return "CHF ";
     default:
-      return (code || "USD") + " ";
+      return c + " ";
   }
 }
 

@@ -34,7 +34,7 @@ func validateRetailerURL(raw string) (string, bool) {
 		return "", false
 	}
 	u, err := url.Parse(trimmed)
-	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Host == "" || u.User != nil {
+	if err != nil || (u.Scheme != "http" && u.Scheme != "https") || u.Hostname() == "" || u.User != nil {
 		return "", false
 	}
 	return trimmed, true
