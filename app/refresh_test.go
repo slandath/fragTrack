@@ -1,6 +1,7 @@
 package main
 
 import (
+	"strings"
 	"testing"
 	"time"
 )
@@ -55,6 +56,19 @@ func TestRunRefreshRecordsOutcomes(t *testing.T) {
 	}
 	if after[0].LastPriceMinor == nil || *after[0].LastPriceMinor != 11000 {
 		t.Fatalf("old price must survive a failed run: %+v", after[0])
+	}
+	// Failure reason must persist in the freshness record and stream
+	// over SSE so the UI can show an actionable message.
+	if after[0].LastFailure == nil || *after[0].LastFailure != "boom" {
+		t.Fatalf("failure reason must persist: %+v", after[0])
+	}
+	for _, ev := range drained {
+		if ev.FailureReason != "boom" {
+			t.Fatalf("SSE failureReason: %+v", ev)
+		}
+	}
+	if got := rowStatus(after[0]); !strings.Contains(got, "refresh failed") || !strings.Contains(got, "boom") {
+		t.Fatalf("rowStatus must carry the reason: %q", got)
 	}
 }
 

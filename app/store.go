@@ -20,7 +20,7 @@ type Store interface {
 	AddLink(fragranceID string, link RetailerLink) error
 	DeleteLink(linkID string) error
 	LinksForFragrance(fragranceID string) ([]RetailerLink, error)
-	RecordAttempt(linkID string, at time.Time, status string) error
+	RecordAttempt(linkID string, at time.Time, status string, reason string) error
 	RecordSuccess(linkID string, at time.Time, priceMinor int64, currency string) error
 	Backup(dir string) (string, error)
 	Close() error
@@ -66,6 +66,7 @@ func (s *sqliteStore) ensureSchema() error {
 			last_price_currency TEXT,
 			last_success_at TEXT,
 			last_attempt_at TEXT,
+			last_failure TEXT,
 			link_status TEXT NOT NULL DEFAULT 'never-checked'
 		)`,
 		`CREATE INDEX IF NOT EXISTS idx_links_fragrance ON retailer_links(fragrance_id)`,
@@ -74,6 +75,11 @@ func (s *sqliteStore) ensureSchema() error {
 		if _, err := s.db.Exec(stmt); err != nil {
 			return err
 		}
+	}
+	// Existing databases predate last_failure: add it in place so the
+	// dashboard keeps its history instead of refusing to open.
+	if err := s.ensureColumn("retailer_links", "last_failure", "TEXT"); err != nil {
+		return err
 	}
 	var version int
 	err := s.db.QueryRow(`SELECT value FROM meta WHERE key = 'version'`).Scan(&version)
@@ -195,9 +201,36 @@ func (s *sqliteStore) DeleteLink(linkID string) error {
 	return err
 }
 
+func (s *sqliteStore) ensureColumn(table, column, colType string) error {
+	rows, err := s.db.Query(fmt.Sprintf(`PRAGMA table_info(%s)`, table))
+	if err != nil {
+		return err
+	}
+	defer rows.Close()
+	found := false
+	for rows.Next() {
+		var cid int
+		var name, typ string
+		var notNull, pk int
+		var dflt sql.NullString
+		if err := rows.Scan(&cid, &name, &typ, &notNull, &dflt, &pk); err != nil {
+			return err
+		}
+		if name == column {
+			found = true
+			break
+		}
+	}
+	if found {
+		return nil
+	}
+	_, err = s.db.Exec(fmt.Sprintf(`ALTER TABLE %s ADD COLUMN %s %s`, table, column, colType))
+	return err
+}
+
 func (s *sqliteStore) LinksForFragrance(fragranceID string) ([]RetailerLink, error) {
 	rows, err := s.db.Query(`SELECT id, fragrance_id, retailer, url,
-		last_price_minor, last_price_currency, last_success_at, last_attempt_at, link_status
+		last_price_minor, last_price_currency, last_success_at, last_attempt_at, last_failure, link_status
 		FROM retailer_links WHERE fragrance_id = ? ORDER BY retailer COLLATE NOCASE ASC`, fragranceID)
 	if err != nil {
 		return nil, err
@@ -208,9 +241,9 @@ func (s *sqliteStore) LinksForFragrance(fragranceID string) ([]RetailerLink, err
 		var l RetailerLink
 		var minor sql.NullInt64
 		var curr sql.NullString
-		var success, attempt sql.NullString
+		var success, attempt, failure sql.NullString
 		if err := rows.Scan(&l.ID, &l.FragranceID, &l.Retailer, &l.URL,
-			&minor, &curr, &success, &attempt, &l.LinkStatus); err != nil {
+			&minor, &curr, &success, &attempt, &failure, &l.LinkStatus); err != nil {
 			return nil, err
 		}
 		if minor.Valid {
@@ -221,6 +254,10 @@ func (s *sqliteStore) LinksForFragrance(fragranceID string) ([]RetailerLink, err
 			v := curr.String
 			l.LastPriceCurrency = &v
 		}
+		if failure.Valid && failure.String != "" {
+			v := failure.String
+			l.LastFailure = &v
+		}
 		l.LastSuccessAt = parseTime(success)
 		l.LastAttemptAt = parseTime(attempt)
 		out = append(out, l)
@@ -228,9 +265,10 @@ func (s *sqliteStore) LinksForFragrance(fragranceID string) ([]RetailerLink, err
 	return out, rows.Err()
 }
 
-func (s *sqliteStore) RecordAttempt(linkID string, at time.Time, status string) error {
-	_, err := s.db.Exec(`UPDATE retailer_links SET last_attempt_at = ?, link_status = ?
-		WHERE id = ?`, at.UTC().Format(time.RFC3339), status, linkID)
+func (s *sqliteStore) RecordAttempt(linkID string, at time.Time, status string, reason string) error {
+	_, err := s.db.Exec(`UPDATE retailer_links SET last_attempt_at = ?, link_status = ?,
+		last_failure = ? WHERE id = ?`,
+		at.UTC().Format(time.RFC3339), status, reason, linkID)
 	return err
 }
 
@@ -238,7 +276,7 @@ func (s *sqliteStore) RecordSuccess(linkID string, at time.Time, priceMinor int6
 	ts := at.UTC().Format(time.RFC3339)
 	_, err := s.db.Exec(`UPDATE retailer_links
 		SET last_price_minor = ?, last_price_currency = ?, last_success_at = ?,
-		last_attempt_at = ?, link_status = 'ok'
+		last_attempt_at = ?, last_failure = NULL, link_status = 'ok'
 		WHERE id = ?`, priceMinor, currency, ts, ts, linkID)
 	return err
 }

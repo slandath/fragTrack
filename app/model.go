@@ -21,6 +21,7 @@ type RetailerLink struct {
 	LastPriceCurrency *string
 	LastSuccessAt     *time.Time
 	LastAttemptAt     *time.Time
+	LastFailure       *string
 	LinkStatus        string // ok | failed | blocked | never-checked
 }
 

@@ -34,9 +34,12 @@ var retailerConfigs = []RetailerConfig{
 		Currency:      "USD",
 	},
 	{
-		Name:          "FragFlex",
-		Domain:        "fragflex.com",
-		PriceSelector: ".price-custom__sale .money",
+		Name:   "FragFlex",
+		Domain: "fragflex.com",
+		// <main>-scoped: the sticky-menu block ($0.99 Flex Care) also
+		// matches `.price-custom__sale .money` and precedes the PDP price
+		// in DOM order. The authoritative node is the <main> PDP price.
+		PriceSelector: "main .price-custom__sale .money",
 		Currency:      "USD",
 	},
 	{
@@ -58,9 +61,12 @@ var retailerConfigs = []RetailerConfig{
 		Currency:      "USD",
 	},
 	{
-		Name:          "Perfume Box",
-		Domain:        "perfumebox.com",
-		PriceSelector: "[data-product-price] [aria-hidden='true']",
+		Name:   "Perfume Box",
+		Domain: "perfumebox.com",
+		// Current template renders the sale price in
+		// `.pb-pdp__price-current--sale`; the old `[data-product-price]`
+		// attribute no longer exists on live pages.
+		PriceSelector: ".pb-pdp__price-current",
 		Currency:      "USD",
 	},
 }

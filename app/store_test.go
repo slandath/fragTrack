@@ -65,8 +65,15 @@ func TestStoreFreshnessSemantics(t *testing.T) {
 	}
 	// A failed attempt keeps the previous price and stamps the attempt.
 	later := at.Add(time.Hour)
-	if err := s.RecordAttempt("l1", later, "failed"); err != nil {
+	if err := s.RecordAttempt("l1", later, "failed", "selector missed"); err != nil {
 		t.Fatalf("record attempt: %v", err)
+	}
+	links, _ = s.LinksForFragrance("f1")
+	if links[0].LastFailure == nil || *links[0].LastFailure != "selector missed" {
+		t.Fatalf("failure reason must persist: %+v", links[0])
+	}
+	if got := rowStatus(links[0]); got != "price from 2026-11-24 12:00, refresh failed 2026-11-24 13:00: selector missed" {
+		t.Fatalf("rowStatus failed: %q", got)
 	}
 	links, _ = s.LinksForFragrance("f1")
 	if links[0].LinkStatus != "failed" || links[0].LastPriceMinor == nil || *links[0].LastPriceMinor != 11000 {

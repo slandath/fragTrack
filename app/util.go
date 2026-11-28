@@ -37,14 +37,24 @@ func formatPrice(l RetailerLink) string {
 }
 
 // rowStatus renders the fixed freshness wording for one link row.
+// A stored failure reason is appended so a failed/blocked row stays
+// actionable ("selector missed", "http 403") instead of a bare flag.
 func rowStatus(l RetailerLink) string {
 	switch l.LinkStatus {
 	case "ok":
 		return "confirmed " + fmtTime(l.LastSuccessAt)
 	case "failed":
-		return "price from " + fmtTime(l.LastSuccessAt) + ", refresh failed " + fmtTime(l.LastAttemptAt)
+		s := "price from " + fmtTime(l.LastSuccessAt) + ", refresh failed " + fmtTime(l.LastAttemptAt)
+		if l.LastFailure != nil && *l.LastFailure != "" {
+			s += ": " + *l.LastFailure
+		}
+		return s
 	case "blocked":
-		return "price from " + fmtTime(l.LastSuccessAt) + ", blocked " + fmtTime(l.LastAttemptAt)
+		s := "price from " + fmtTime(l.LastSuccessAt) + ", blocked " + fmtTime(l.LastAttemptAt)
+		if l.LastFailure != nil && *l.LastFailure != "" {
+			s += ": " + *l.LastFailure
+		}
+		return s
 	default:
 		return "no check yet"
 	}
