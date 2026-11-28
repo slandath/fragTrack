@@ -27,17 +27,26 @@ func parseRetailerPrice(body []byte, cfg RetailerConfig) (int64, string, error) 
 	if len(matches) == 0 {
 		return 0, "", fmt.Errorf("no element matching %q", cfg.PriceSelector)
 	}
-	node := matches[0]
-	text := strings.TrimSpace(nodeText(node))
-	found := pricePattern.FindAllString(text, -1)
-	if len(found) == 0 {
-		return 0, "", fmt.Errorf("no price in %q", text)
+	// Collect across every matched node, not just the first: two nodes
+	// with one amount each ($0.99 + $37.52) would otherwise confirm
+	// the first wrong amount. Only a single distinct amount across
+	// all nodes may be confirmed; anything else is ambiguous.
+	var found []string
+	var texts []string
+	for _, n := range matches {
+		t := strings.TrimSpace(nodeText(n))
+		texts = append(texts, t)
+		found = append(found, pricePattern.FindAllString(t, -1)...)
 	}
-	// Ambiguous text (sale + regular, ranges) must never confirm a
-	// wrong-but-plausible amount. The selector owns narrowing; this
-	// guard fails closed when it does not.
-	if len(found) > 1 {
-		return 0, "", fmt.Errorf("ambiguous prices %q in %q", found, text)
+	if len(found) == 0 {
+		return 0, "", fmt.Errorf("no price in %q", strings.Join(texts, " | "))
+	}
+	distinct := map[string]struct{}{}
+	for _, f := range found {
+		distinct[strings.ReplaceAll(f, ",", "")] = struct{}{}
+	}
+	if len(distinct) > 1 {
+		return 0, "", fmt.Errorf("ambiguous prices %q in %q", found, strings.Join(texts, " | "))
 	}
 	match := found[0]
 	clean := strings.ReplaceAll(match, ",", "")

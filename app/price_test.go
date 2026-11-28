@@ -70,6 +70,19 @@ func TestAmbiguousMultiPriceRejected(t *testing.T) {
 	if _, _, err := parseRetailerPrice(body2, cfg); err == nil {
 		t.Fatal("expected error for sale+regular text, got nil")
 	}
+	// Two nodes with one amount each must also be rejected: picking
+	// the first would confirm a wrong-but-plausible price.
+	competing := []byte(`<html><body><main><span class="money">$0.99</span><span class="money">$37.52</span></main></body></html>`)
+	main := RetailerConfig{Name: "T", Domain: "t.com", PriceSelector: "main .money", Currency: "USD"}
+	if _, _, err := parseRetailerPrice(competing, main); err == nil {
+		t.Fatal("expected error for competing nodes, got nil")
+	}
+	// Duplicate nodes with the same amount are not ambiguous.
+	dup := []byte(`<html><body><main><span class="money">$37.52</span><span class="money">$37.52</span></main></body></html>`)
+	minor, _, err := parseRetailerPrice(dup, main)
+	if err != nil || minor != 3752 {
+		t.Fatalf("duplicate same price should parse: got %d, err=%v", minor, err)
+	}
 }
 
 func fixtureNameFor(cfg RetailerConfig) string {
